@@ -123,6 +123,13 @@ describe('relativeTime', () => {
             expect(() => relativeTime(ago(DAY), { locale: 'de,en' })).toThrow(RangeError);
         });
 
+        it('rejects an empty tag no matter what the formatter cache already holds', () => {
+            expect(() => relativeTime(ago(DAY), { locale: '' })).toThrow(RangeError);
+            expect(relativeTime(ago(DAY))).toBe(relativeTime(ago(DAY), { locale: [] }));
+            expect(() => relativeTime(ago(DAY), { locale: '' })).toThrow(RangeError);
+            expect(() => relativeTime(ago(DAY), { locale: [''] })).toThrow(RangeError);
+        });
+
         it('stays correct past the formatter cache bound', () => {
             for (let i = 0; i < 200; i += 1) {
                 expect(relativeTime(ago(DAY), { locale: `en-u-nu-latn-x-t${i}` })).toBe(

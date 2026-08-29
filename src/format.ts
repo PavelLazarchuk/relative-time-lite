@@ -25,7 +25,10 @@ const MAX_FORMATTERS = 64;
 function getFormatter(options: RelativeTimeOptions): Intl.RelativeTimeFormat {
     const { locale, style = 'long', numeric = 'auto' } = options;
 
-    const tags = typeof locale === 'string' ? locale : (locale ?? []).join('\u0000');
+    const tags =
+        typeof locale === 'string'
+            ? `\u0001${locale}`
+            : (locale ?? []).map(tag => `\u0002${tag}`).join('');
     const key = `${tags}\u0000${style}\u0000${numeric}`;
 
     let formatter = formatters.get(key);

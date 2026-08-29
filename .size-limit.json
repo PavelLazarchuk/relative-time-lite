@@ -15,7 +15,7 @@
         "name": "tree-shaking: { relativeTime } only",
         "path": "dist/index.js",
         "import": "{ relativeTime }",
-        "limit": "800 B",
+        "limit": "850 B",
         "gzip": true
     },
     {

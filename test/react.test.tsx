@@ -110,6 +110,17 @@ describe('useRelativeTime', () => {
         expect(text()).toBe(relativeTime(NOW.getTime() - 3 * HOUR, { locale: [] }));
     });
 
+    it('does not rewrite a comma-joined tag into a list, as the core does not', () => {
+        const onError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        expect(() => relativeTime(NOW.getTime() - DAY, { locale: 'de,en' })).toThrow(RangeError);
+        expect(() =>
+            render(<Stamp date={NOW.getTime() - DAY} options={{ locale: 'de,en' }} />)
+        ).toThrow(RangeError);
+
+        onError.mockRestore();
+    });
+
     it('follows the locale when it changes', () => {
         const { rerender } = render(
             <Stamp date={NOW.getTime() - 3 * HOUR} options={{ locale: 'en' }} />

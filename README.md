@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/relative-time-lite.svg)](https://www.npmjs.com/package/relative-time-lite)
 [![npm downloads](https://img.shields.io/npm/dm/relative-time-lite.svg)](https://www.npmjs.com/package/relative-time-lite)
 
-Relative time formatting — "3 minutes ago", "in 2 months" — in **778 B gzipped**, with a live-updating React hook in the box.
+Relative time formatting — "3 minutes ago", "in 2 months" — in **795 B gzipped**, with a live-updating React hook in the box.
 
 ```sh
 npm install relative-time-lite
@@ -165,9 +165,9 @@ Measured gzipped, with `size-limit`:
 | Import                                      | Size    |
 | ------------------------------------------- | ------- |
 | `import { selectUnit }`                     | 414 B   |
-| `import { relativeTime }`                   | 778 B   |
-| the whole root entry                        | 1.15 kB |
-| `relative-time-lite/react` (React excluded) | 1.22 kB |
+| `import { relativeTime }`                   | 795 B   |
+| the whole root entry                        | 1.17 kB |
+| `relative-time-lite/react` (React excluded) | 1.26 kB |
 
 The package is side-effect free and every export is tree-shakeable, so importing only `relativeTime` leaves the auto-update engine out of your bundle entirely.
 

@@ -18,18 +18,15 @@ export function useRelativeTime(date: DateInput, options: RelativeTimeOptions = 
 
     const target = toMs(date);
     const base = now === undefined ? undefined : toMs(now);
-    const localeKey = typeof locale === 'string' ? locale : locale?.join(',');
 
-    const store = useMemo(
-        () =>
-            createRelativeTimeStore(target, {
-                locale: localeKey ? localeKey.split(',') : undefined,
-                style,
-                numeric,
-                now: base,
-            }),
-        [target, localeKey, style, numeric, base]
-    );
+    const localeIsList = typeof locale !== 'string';
+    const localeKey = typeof locale === 'string' ? locale : (locale ?? []).join('\u0000');
+
+    const store = useMemo(() => {
+        const tags = localeIsList ? (localeKey ? localeKey.split('\u0000') : undefined) : localeKey;
+
+        return createRelativeTimeStore(target, { locale: tags, style, numeric, now: base });
+    }, [target, localeIsList, localeKey, style, numeric, base]);
 
     return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
