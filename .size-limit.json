@@ -1,0 +1,36 @@
+[
+    {
+        "name": "relative-time-lite",
+        "path": "dist/index.js",
+        "limit": "1.2 kB",
+        "gzip": true
+    },
+    {
+        "name": "relative-time-lite (cjs)",
+        "path": "dist/index.cjs",
+        "limit": "1.3 kB",
+        "gzip": true
+    },
+    {
+        "name": "tree-shaking: { relativeTime } only",
+        "path": "dist/index.js",
+        "import": "{ relativeTime }",
+        "limit": "800 B",
+        "gzip": true
+    },
+    {
+        "name": "tree-shaking: { selectUnit } only",
+        "path": "dist/index.js",
+        "import": "{ selectUnit }",
+        "limit": "460 B",
+        "gzip": true
+    },
+    {
+        "name": "relative-time-lite/react",
+        "path": "dist/react/index.js",
+        "import": "{ useRelativeTime }",
+        "limit": "1.3 kB",
+        "gzip": true,
+        "ignore": ["react"]
+    }
+]

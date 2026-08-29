@@ -1,0 +1,141 @@
+{
+    "name": "relative-time-lite",
+    "version": "1.0.0",
+    "description": "Sub-kilobyte relative time formatting on top of the platform's Intl.RelativeTimeFormat — no bundled locale data, calendar-correct units, and a self-pacing live updater with a React hook.",
+    "license": "MIT",
+    "sideEffects": false,
+    "type": "module",
+    "engines": {
+        "node": ">=20"
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "exports": {
+        ".": {
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/index.d.cts",
+                "default": "./dist/index.cjs"
+            }
+        },
+        "./react": {
+            "import": {
+                "types": "./dist/react/index.d.ts",
+                "default": "./dist/react/index.js"
+            },
+            "require": {
+                "types": "./dist/react/index.d.cts",
+                "default": "./dist/react/index.cjs"
+            }
+        },
+        "./package.json": "./package.json"
+    },
+    "typesVersions": {
+        "*": {
+            "react": [
+                "./dist/react/index.d.ts"
+            ]
+        }
+    },
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "scripts": {
+        "build": "tsup && node scripts/add-use-client.mjs",
+        "dev": "tsup --watch --onSuccess \"node scripts/add-use-client.mjs\"",
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
+        "check": "publint && attw --pack . && node scripts/check-core-standalone.mjs",
+        "check-exports": "npm run check",
+        "size": "size-limit",
+        "pack:verify": "npm pack --dry-run",
+        "changeset": "changeset",
+        "release": "npm run build && node scripts/publish-if-new.mjs",
+        "prepare": "husky"
+    },
+    "peerDependencies": {
+        "react": ">=18"
+    },
+    "peerDependenciesMeta": {
+        "react": {
+            "optional": true
+        }
+    },
+    "keywords": [
+        "relative-time",
+        "timeago",
+        "time-ago",
+        "intl",
+        "intl-relativetimeformat",
+        "relativetimeformat",
+        "date",
+        "date-format",
+        "humanize",
+        "i18n",
+        "l10n",
+        "locale",
+        "react",
+        "react-hook",
+        "usesyncexternalstore",
+        "live-updating",
+        "tiny",
+        "typescript",
+        "zero-dependencies",
+        "tree-shakeable",
+        "ssr"
+    ],
+    "author": "Pavel Lazarchuk",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/PavelLazarchuk/relative-time-lite.git"
+    },
+    "bugs": {
+        "url": "https://github.com/PavelLazarchuk/relative-time-lite/issues"
+    },
+    "homepage": "https://github.com/PavelLazarchuk/relative-time-lite#readme",
+    "devDependencies": {
+        "@arethetypeswrong/cli": "^0.18.5",
+        "@changesets/cli": "^2.31.1",
+        "@eslint/js": "^10.0.1",
+        "@size-limit/preset-small-lib": "^13.0.3",
+        "@testing-library/dom": "^10.4.1",
+        "@testing-library/react": "^16.3.3",
+        "@types/react": "^19.2.18",
+        "@vitest/coverage-v8": "^4.1.11",
+        "eslint": "^10.9.1",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-react-hooks": "^7.1.1",
+        "husky": "^9.1.7",
+        "jsdom": "^29.1.1",
+        "lint-staged": "^17.4.1",
+        "prettier": "^3.9.6",
+        "publint": "^0.3.24",
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8",
+        "size-limit": "^13.0.3",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "typescript-eslint": "^8.68.0",
+        "vitest": "^4.1.11"
+    },
+    "overrides": {
+        "tsup": {
+            "esbuild": "^0.28.2"
+        }
+    }
+}
