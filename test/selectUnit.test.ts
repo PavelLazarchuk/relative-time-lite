@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { selectUnit } from '../src/selectUnit';
+import type { SelectUnitOptions } from '../src/types';
 
 const at = (iso: string) => new Date(iso).getTime();
 const NOW = at('2024-03-15T12:00:00.000Z');
 
-const from = (offsetMs: number) => selectUnit(NOW, NOW + offsetMs);
+const from = (offsetMs: number, options?: SelectUnitOptions) =>
+    selectUnit(NOW, NOW + offsetMs, options);
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -186,5 +188,118 @@ describe('selectUnit', () => {
 
         expect(a).toEqual(b);
         expect(selectUnit(NOW + 3 * HOUR, NOW)).toEqual({ value: -3, unit: 'hour' });
+    });
+});
+
+describe('selectUnit options', () => {
+    describe('validation', () => {
+        it('rejects a non-finite timestamp instead of returning NaN', () => {
+            expect(() => selectUnit(NaN, NOW)).toThrow(TypeError);
+            expect(() => selectUnit(NOW, Number.POSITIVE_INFINITY)).toThrow(/^relative-time-lite:/);
+        });
+
+        it('rejects an unknown unit', () => {
+            expect(() =>
+                selectUnit(NOW, NOW, { minUnit: 'fortnight' as unknown as 'day' })
+            ).toThrow(RangeError);
+        });
+
+        it('rejects a range that runs backwards', () => {
+            expect(() => selectUnit(NOW, NOW, { minUnit: 'month', maxUnit: 'day' })).toThrow(
+                RangeError
+            );
+        });
+    });
+
+    describe('rounding', () => {
+        it('floors towards zero, keeping the unit it is still inside', () => {
+            expect(from(59.5 * SECOND, { rounding: 'floor' })).toEqual({
+                value: 59,
+                unit: 'second',
+            });
+            expect(from(-59.9 * MINUTE, { rounding: 'floor' })).toEqual({
+                value: -59,
+                unit: 'minute',
+            });
+        });
+
+        it('reaches the next unit only once the unit is whole', () => {
+            expect(from(23.9 * HOUR, { rounding: 'floor' })).toEqual({ value: 23, unit: 'hour' });
+            expect(from(24 * HOUR, { rounding: 'floor' })).toEqual({ value: 1, unit: 'day' });
+        });
+
+        it('never reports a negative zero', () => {
+            expect(Object.is(from(-400, { rounding: 'floor' }).value, 0)).toBe(true);
+            expect(Object.is(from(-400).value, 0)).toBe(true);
+        });
+    });
+
+    describe('minUnit', () => {
+        it('expresses anything finer in the finest allowed unit', () => {
+            expect(from(30 * SECOND, { minUnit: 'minute' })).toEqual({ value: 1, unit: 'minute' });
+            expect(from(20 * SECOND, { minUnit: 'minute' })).toEqual({ value: 0, unit: 'minute' });
+            expect(from(3 * HOUR, { minUnit: 'day' })).toEqual({ value: 0, unit: 'day' });
+        });
+
+        it('leaves coarser distances alone', () => {
+            expect(from(3 * HOUR, { minUnit: 'minute' })).toEqual({ value: 3, unit: 'hour' });
+        });
+    });
+
+    describe('maxUnit', () => {
+        it('expresses anything coarser in the coarsest allowed unit', () => {
+            expect(from(90 * DAY, { maxUnit: 'day' })).toEqual({ value: 90, unit: 'day' });
+            expect(from(400 * DAY, { maxUnit: 'month' })).toEqual({ value: 13, unit: 'month' });
+            expect(from(3 * HOUR, { maxUnit: 'second' })).toEqual({
+                value: 10_800,
+                unit: 'second',
+            });
+        });
+
+        it('leaves finer distances alone', () => {
+            expect(from(3 * HOUR, { maxUnit: 'day' })).toEqual({ value: 3, unit: 'hour' });
+        });
+
+        it('skips the calendar entirely when months are out of range', () => {
+            expect(from(45 * DAY, { maxUnit: 'week' })).toEqual({ value: 6, unit: 'week' });
+        });
+    });
+
+    describe('justNowSeconds', () => {
+        it('collapses a short distance to zero, in either direction', () => {
+            expect(from(20 * SECOND, { justNowSeconds: 45 })).toEqual({
+                value: 0,
+                unit: 'second',
+            });
+            expect(from(-44 * SECOND, { justNowSeconds: 45 })).toEqual({
+                value: 0,
+                unit: 'second',
+            });
+        });
+
+        it('lets the ladder take over at the edge of the window', () => {
+            expect(from(45 * SECOND, { justNowSeconds: 45 })).toEqual({
+                value: 45,
+                unit: 'second',
+            });
+        });
+
+        it('reports the collapse in the finest allowed unit', () => {
+            expect(from(20 * SECOND, { justNowSeconds: 45, minUnit: 'minute' })).toEqual({
+                value: 0,
+                unit: 'minute',
+            });
+        });
+    });
+
+    it('combines a floor, a window and a clamped ladder', () => {
+        expect(
+            from(50 * DAY, {
+                rounding: 'floor',
+                justNowSeconds: 30,
+                minUnit: 'hour',
+                maxUnit: 'week',
+            })
+        ).toEqual({ value: 7, unit: 'week' });
     });
 });

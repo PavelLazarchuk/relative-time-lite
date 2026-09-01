@@ -5,7 +5,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { relativeTime } from '../src/format';
-import { useRelativeTime } from '../src/react';
+import { useRelativeTime, useRelativeTimeParts } from '../src/react';
 import type { DateInput, RelativeTimeOptions } from '../src/types';
 
 const NOW = new Date('2024-03-15T12:00:00.000Z');
@@ -149,5 +149,83 @@ describe('useRelativeTime', () => {
         expect(() => render(<Stamp date="not a date" />)).toThrow(/^relative-time-lite:/);
 
         onError.mockRestore();
+    });
+});
+
+describe('useRelativeTime with no date', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    });
+
+    afterEach(() => {
+        cleanup();
+        vi.useRealTimers();
+    });
+
+    function Maybe({ date }: { date: DateInput | null | undefined }) {
+        return <span data-testid="stamp">{useRelativeTime(date, { locale: 'en' })}</span>;
+    }
+
+    it('renders an empty string instead of throwing', () => {
+        render(<Maybe date={null} />);
+
+        expect(text()).toBe('');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('treats undefined the same way', () => {
+        render(<Maybe date={undefined} />);
+
+        expect(text()).toBe('');
+    });
+
+    it('starts ticking once the date arrives', () => {
+        const { rerender } = render(<Maybe date={null} />);
+
+        rerender(<Maybe date={NOW.getTime()} />);
+        expect(text()).toBe('now');
+
+        act(() => void vi.advanceTimersByTime(5000));
+        expect(text()).toBe('5 seconds ago');
+
+        rerender(<Maybe date={null} />);
+        expect(text()).toBe('');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+});
+
+describe('useRelativeTimeParts', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    });
+
+    afterEach(() => {
+        cleanup();
+        vi.useRealTimers();
+    });
+
+    function Parts({ date }: { date: DateInput | null | undefined }) {
+        const parts = useRelativeTimeParts(date, { locale: 'en' });
+
+        return <span data-testid="stamp">{parts ? `${parts.value} ${parts.unit}` : 'none'}</span>;
+    }
+
+    it('renders the unit and the value, and keeps them current', () => {
+        render(<Parts date={NOW.getTime() - 3 * HOUR} />);
+
+        expect(text()).toBe('-3 hour');
+
+        act(() => void vi.advanceTimersByTime(HOUR));
+        expect(text()).toBe('-4 hour');
+    });
+
+    it('returns null when there is no date', () => {
+        render(<Parts date={null} />);
+
+        expect(text()).toBe('none');
     });
 });

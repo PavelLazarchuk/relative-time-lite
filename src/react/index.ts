@@ -2,7 +2,74 @@ import { useMemo, useSyncExternalStore } from 'react';
 
 import { toMs } from '../format';
 import { createRelativeTimeStore } from '../store';
-import type { DateInput, RelativeTimeOptions } from '../types';
+import type { RelativeTimeStore } from '../store';
+import type { DateInput, RelativeTimeResult, RelativeTimeStoreOptions } from '../types';
+
+const noop = () => {};
+
+const NO_PARTS: RelativeTimeResult = { value: 0, unit: 'second', text: '' };
+
+const EMPTY_STORE: RelativeTimeStore = {
+    subscribe: () => noop,
+    getSnapshot: () => '',
+    getParts: () => NO_PARTS,
+};
+
+function useRelativeTimeStore(
+    date: DateInput | null | undefined,
+    options: RelativeTimeStoreOptions
+): RelativeTimeStore {
+    const {
+        locale,
+        style,
+        numeric,
+        now,
+        minUnit,
+        maxUnit,
+        rounding,
+        justNowSeconds,
+        refreshMs,
+        trackVisibility,
+    } = options;
+
+    const target = date === null || date === undefined ? undefined : toMs(date);
+    const base = now === undefined ? undefined : toMs(now);
+
+    const localeIsList = typeof locale !== 'string';
+    const localeKey = typeof locale === 'string' ? locale : (locale ?? []).join('\u0000');
+
+    return useMemo(() => {
+        if (target === undefined) return EMPTY_STORE;
+
+        const tags = localeIsList ? (localeKey ? localeKey.split('\u0000') : undefined) : localeKey;
+
+        return createRelativeTimeStore(target, {
+            locale: tags,
+            style,
+            numeric,
+            now: base,
+            minUnit,
+            maxUnit,
+            rounding,
+            justNowSeconds,
+            refreshMs,
+            trackVisibility,
+        });
+    }, [
+        target,
+        localeIsList,
+        localeKey,
+        style,
+        numeric,
+        base,
+        minUnit,
+        maxUnit,
+        rounding,
+        justNowSeconds,
+        refreshMs,
+        trackVisibility,
+    ]);
+}
 
 /**
  * A relative timestamp that keeps itself current: "just now" becomes
@@ -12,23 +79,50 @@ import type { DateInput, RelativeTimeOptions } from '../types';
  * truth and the component re-renders only when the text actually changes.
  * The server snapshot is the same computation, which keeps hydration quiet as
  * long as client and server agree on the locale.
+ *
+ * A `null` or `undefined` date renders an empty string, so a timestamp that
+ * may not be there yet does not force a conditional hook.
  */
-export function useRelativeTime(date: DateInput, options: RelativeTimeOptions = {}): string {
-    const { locale, style, numeric, now } = options;
-
-    const target = toMs(date);
-    const base = now === undefined ? undefined : toMs(now);
-
-    const localeIsList = typeof locale !== 'string';
-    const localeKey = typeof locale === 'string' ? locale : (locale ?? []).join('\u0000');
-
-    const store = useMemo(() => {
-        const tags = localeIsList ? (localeKey ? localeKey.split('\u0000') : undefined) : localeKey;
-
-        return createRelativeTimeStore(target, { locale: tags, style, numeric, now: base });
-    }, [target, localeIsList, localeKey, style, numeric, base]);
+export function useRelativeTime(
+    date: DateInput | null | undefined,
+    options: RelativeTimeStoreOptions = {}
+): string {
+    const store = useRelativeTimeStore(date, options);
 
     return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
-export type { DateInput, RelativeTimeOptions, RelativeTimeUnit } from '../types';
+/**
+ * `useRelativeTime` with the decision behind the words: the live
+ * `{ value, unit, text }`, for markup that needs the unit as well — a `<time>`
+ * title, or a switch to an absolute date once the unit reaches years.
+ *
+ * The object is replaced only when the text changes, so it is safe to compare
+ * by identity or to pass into a memo.
+ */
+export function useRelativeTimeParts(
+    date: DateInput,
+    options?: RelativeTimeStoreOptions
+): RelativeTimeResult;
+export function useRelativeTimeParts(
+    date: DateInput | null | undefined,
+    options?: RelativeTimeStoreOptions
+): RelativeTimeResult | null;
+export function useRelativeTimeParts(
+    date: DateInput | null | undefined,
+    options: RelativeTimeStoreOptions = {}
+): RelativeTimeResult | null {
+    const store = useRelativeTimeStore(date, options);
+    const parts = useSyncExternalStore(store.subscribe, store.getParts, store.getParts);
+
+    return store === EMPTY_STORE ? null : parts;
+}
+
+export type {
+    DateInput,
+    RelativeTimeOptions,
+    RelativeTimeResult,
+    RelativeTimeStoreOptions,
+    RelativeTimeUnit,
+    SelectUnitOptions,
+} from '../types';

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { relativeTime } from '../src/format';
+import { relativeTime, relativeTimeParts } from '../src/format';
 
 const NOW = new Date('2024-03-15T12:00:00.000Z');
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
@@ -157,5 +157,54 @@ describe('relativeTime', () => {
             expect(relativeTime('2023-03-15T12:00:00.000Z', { locale: 'en' })).toBe('last year');
             expect(relativeTime('2025-03-15T12:00:00.000Z', { locale: 'en' })).toBe('next year');
         });
+    });
+});
+
+describe('relativeTimeParts', () => {
+    it('returns the decision alongside the text', () => {
+        expect(relativeTimeParts(ago(3 * MINUTE), { locale: 'en', now: NOW })).toEqual({
+            value: -3,
+            unit: 'minute',
+            text: '3 minutes ago',
+        });
+    });
+
+    it('agrees with relativeTime, which is built on it', () => {
+        const options = { locale: 'de', style: 'short', now: NOW } as const;
+
+        expect(relativeTimeParts(ago(DAY), options).text).toBe(relativeTime(ago(DAY), options));
+    });
+
+    it('rejects an invalid date the same way', () => {
+        expect(() => relativeTimeParts('not a date')).toThrow(TypeError);
+    });
+});
+
+describe('unit options reach the formatter', () => {
+    it('caps the ladder where maxUnit says', () => {
+        expect(relativeTime(ago(90 * DAY), { locale: 'en', now: NOW, maxUnit: 'day' })).toBe(
+            '90 days ago'
+        );
+    });
+
+    it('holds the finer wording back where minUnit says', () => {
+        expect(relativeTime(ago(20 * 1000), { locale: 'en', now: NOW, minUnit: 'minute' })).toBe(
+            'this minute'
+        );
+        expect(relativeTime(ago(40 * 1000), { locale: 'en', now: NOW, minUnit: 'minute' })).toBe(
+            '1 minute ago'
+        );
+    });
+
+    it('says "now" for anything inside the just-now window', () => {
+        expect(relativeTime(ago(20 * 1000), { locale: 'en', now: NOW, justNowSeconds: 45 })).toBe(
+            'now'
+        );
+    });
+
+    it('truncates instead of rounding when asked to', () => {
+        expect(relativeTime(ago(59_900), { locale: 'en', now: NOW, rounding: 'floor' })).toBe(
+            '59 seconds ago'
+        );
     });
 });

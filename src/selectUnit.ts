@@ -1,4 +1,4 @@
-import type { RelativeTimeParts } from './types';
+import type { RelativeTimeParts, RelativeTimeUnit, SelectUnitOptions } from './types';
 
 const SECOND = 1000;
 const MINUTE = 60_000;
@@ -6,7 +6,11 @@ const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const WEEK = 604_800_000;
 
+const UNITS: RelativeTimeUnit[] = ['second', 'minute', 'hour', 'day', 'week', 'month', 'year'];
+
 const round = (n: number) => (n < 0 ? -Math.round(-n) : Math.round(n));
+
+const quantize = (n: number, floor: boolean) => (floor ? Math.trunc(n) : round(n)) || 0;
 
 const addMonths = (date: Date, months: number) => {
     const shifted = new Date(date.getTime());
@@ -42,7 +46,7 @@ function monthsBetween(fromMs: number, toMs: number): number {
     let whole = (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth();
     let anchor = addMonths(start, whole).getTime();
 
-    while (anchor > endMs) {
+    if (anchor > endMs) {
         whole -= 1;
         anchor = addMonths(start, whole).getTime();
     }
@@ -57,28 +61,70 @@ function monthsBetween(fromMs: number, toMs: number): number {
  * Pure: same inputs, same output, no clock access.
  *
  * Sub-month units are elapsed-time based (a day is 24 hours, DST included);
- * months and years are calendar based.
+ * months and years are calendar based, in the runtime's local time zone.
+ *
+ * `minUnit` and `maxUnit` clamp the ladder from either end, so the distance is
+ * expressed in the nearest allowed unit rather than the natural one.
  */
-export function selectUnit(fromMs: number, toMs: number): RelativeTimeParts {
+export function selectUnit(
+    fromMs: number,
+    toMs: number,
+    options: SelectUnitOptions = {}
+): RelativeTimeParts {
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
+        throw new TypeError(`relative-time-lite: invalid timestamps: ${fromMs}, ${toMs}`);
+    }
+
+    const {
+        minUnit = 'second',
+        maxUnit = 'year',
+        rounding = 'round',
+        justNowSeconds = 0,
+    } = options;
+
+    const lo = UNITS.indexOf(minUnit);
+    const hi = UNITS.indexOf(maxUnit);
+
+    if (lo < 0 || hi < 0 || lo > hi) {
+        throw new RangeError(`relative-time-lite: invalid unit range: ${minUnit}..${maxUnit}`);
+    }
+
     const diff = toMs - fromMs;
+    const floor = rounding === 'floor';
 
-    const seconds = round(diff / SECOND);
-    if (Math.abs(seconds) < 60) return { value: seconds, unit: 'second' };
+    if (Math.abs(diff) < justNowSeconds * SECOND) return { value: 0, unit: minUnit };
 
-    const minutes = round(diff / MINUTE);
-    if (Math.abs(minutes) < 60) return { value: minutes, unit: 'minute' };
+    if (lo === 0) {
+        const value = quantize(diff / SECOND, floor);
+        if (hi === 0 || Math.abs(value) < 60) return { value, unit: 'second' };
+    }
 
-    const hours = round(diff / HOUR);
-    if (Math.abs(hours) < 24) return { value: hours, unit: 'hour' };
+    if (lo <= 1) {
+        const value = quantize(diff / MINUTE, floor);
+        if (hi === 1 || Math.abs(value) < 60) return { value, unit: 'minute' };
+    }
 
-    const days = round(diff / DAY);
-    if (Math.abs(days) < 7) return { value: days, unit: 'day' };
+    if (lo <= 2) {
+        const value = quantize(diff / HOUR, floor);
+        if (hi === 2 || Math.abs(value) < 24) return { value, unit: 'hour' };
+    }
 
-    const months = monthsBetween(fromMs, toMs);
-    if (Math.abs(months) < 1) return { value: round(diff / WEEK), unit: 'week' };
+    if (lo <= 3) {
+        const value = quantize(diff / DAY, floor);
+        if (hi === 3 || Math.abs(value) < 7) return { value, unit: 'day' };
+    }
 
-    const wholeMonths = round(months);
-    if (Math.abs(wholeMonths) < 12) return { value: wholeMonths, unit: 'month' };
+    const months = hi > 4 ? monthsBetween(fromMs, toMs) : 0;
 
-    return { value: round(months / 12), unit: 'year' };
+    if (lo <= 4) {
+        const value = quantize(diff / WEEK, floor);
+        if (hi === 4 || Math.abs(months) < 1) return { value, unit: 'week' };
+    }
+
+    if (lo <= 5) {
+        const value = quantize(months, floor);
+        if (hi === 5 || Math.abs(value) < 12) return { value, unit: 'month' };
+    }
+
+    return { value: quantize(months / 12, floor), unit: 'year' };
 }

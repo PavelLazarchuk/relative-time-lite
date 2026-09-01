@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createRelativeTimeStore } from '../src/store';
+import type { RelativeTimeStoreOptions } from '../src/types';
 
 const NOW = new Date('2024-03-15T12:00:00.000Z');
 
@@ -86,32 +87,63 @@ describe('createRelativeTimeStore', () => {
         unsubscribe();
     });
 
-    it('paces itself by unit rather than on a fixed interval', () => {
-        const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
-        const lastDelay = () => {
-            const calls = setTimeoutSpy.mock.calls;
+    describe('pacing', () => {
+        const delayFor = (offsetMs: number, options: RelativeTimeStoreOptions = {}) => {
+            const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
 
-            return calls[calls.length - 1]?.[1];
+            const store = createRelativeTimeStore(NOW.getTime() + offsetMs, {
+                locale: 'en',
+                ...options,
+            });
+            const stop = store.subscribe(() => {});
+            const calls = setTimeoutSpy.mock.calls;
+            const delay = calls[calls.length - 1]?.[1];
+
+            stop();
+            setTimeoutSpy.mockRestore();
+
+            return delay;
         };
 
-        const seconds = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
-        const stopSeconds = seconds.subscribe(() => {});
-        expect(lastDelay()).toBe(1000);
-        stopSeconds();
+        it('sleeps until the displayed number is due to change, not on a grid', () => {
+            // 0s reads "now" and turns into "1 second ago" half a second later.
+            expect(delayFor(0)).toBe(500);
+            // 5 minutes becomes 6 at five and a half.
+            expect(delayFor(-5 * MINUTE)).toBe(30_000);
+            // 3 hours has a full half hour to run, not the 30 minutes of a grid.
+            expect(delayFor(-3 * HOUR - 20 * MINUTE)).toBe(10 * MINUTE);
+            // 5 days does not need checking again for twelve hours.
+            expect(delayFor(-5 * DAY)).toBe(12 * HOUR);
+        });
 
-        setTimeoutSpy.mockClear();
-        const minutes = createRelativeTimeStore(NOW.getTime() - 5 * MINUTE, { locale: 'en' });
-        const stopMinutes = minutes.subscribe(() => {});
-        expect(lastDelay()).toBe(30_000);
-        stopMinutes();
+        it('paces the future the same way it paces the past', () => {
+            expect(delayFor(3 * HOUR + 20 * MINUTE)).toBe(50 * MINUTE);
+        });
 
-        setTimeoutSpy.mockClear();
-        const days = createRelativeTimeStore(NOW.getTime() - 5 * DAY, { locale: 'en' });
-        const stopDays = days.subscribe(() => {});
-        expect(lastDelay()).toBe(3_600_000);
-        stopDays();
+        it('closes in on the crossing for units of no fixed length', () => {
+            const delay = delayFor(-40 * DAY);
 
-        setTimeoutSpy.mockRestore();
+            expect(delay).toBeGreaterThan(DAY);
+            expect(delay).toBeLessThan(30 * DAY);
+        });
+
+        it('waits out the "just now" window in one sleep', () => {
+            expect(delayFor(-10_000, { justNowSeconds: 45 })).toBe(35_000);
+        });
+
+        it('sleeps a whole unit out of a truncated zero, on either side of now', () => {
+            expect(delayFor(0, { rounding: 'floor' })).toBe(1000);
+            expect(delayFor(400, { rounding: 'floor' })).toBe(1400);
+            expect(delayFor(-400, { rounding: 'floor' })).toBe(600);
+        });
+
+        it('honours a fixed refresh interval when asked for one', () => {
+            expect(delayFor(-5 * DAY, { refreshMs: 5_000 })).toBe(5_000);
+        });
+
+        it('caps a very distant timestamp below the setTimeout overflow', () => {
+            expect(delayFor(-40 * 365 * DAY)).toBeLessThanOrEqual(2_147_483_647);
+        });
     });
 
     it('stops all timers on unsubscribe', () => {
@@ -202,6 +234,97 @@ describe('createRelativeTimeStore', () => {
 
         expect(store.getSnapshot()).toBe('1 hour ago');
         expect(listener).not.toHaveBeenCalled();
+
+        unsubscribe();
+    });
+
+    it('does not watch visibility for a pinned `now`, having no timer to suspend', () => {
+        const add = vi.spyOn(document, 'addEventListener');
+
+        const store = createRelativeTimeStore(NOW.getTime() - HOUR, {
+            locale: 'en',
+            now: NOW.getTime(),
+        });
+        const unsubscribe = store.subscribe(() => {});
+
+        expect(add.mock.calls.filter(([type]) => type === 'visibilitychange')).toHaveLength(0);
+
+        unsubscribe();
+        add.mockRestore();
+    });
+
+    it('leaves the document alone when visibility tracking is off', () => {
+        const add = vi.spyOn(document, 'addEventListener');
+
+        const store = createRelativeTimeStore(NOW.getTime(), {
+            locale: 'en',
+            trackVisibility: false,
+        });
+        const listener = vi.fn();
+        const unsubscribe = store.subscribe(listener);
+
+        expect(add.mock.calls.filter(([type]) => type === 'visibilitychange')).toHaveLength(0);
+
+        setHidden(true);
+        vi.advanceTimersByTime(5000);
+
+        expect(store.getSnapshot()).toBe('5 seconds ago');
+        expect(listener).toHaveBeenCalled();
+
+        setHidden(false);
+        unsubscribe();
+    });
+
+    it('ticks on a fixed interval when given one', () => {
+        const store = createRelativeTimeStore(NOW.getTime(), { locale: 'en', refreshMs: 10_000 });
+        const listener = vi.fn();
+        const unsubscribe = store.subscribe(listener);
+
+        vi.advanceTimersByTime(9_000);
+        expect(store.getSnapshot()).toBe('now');
+
+        vi.advanceTimersByTime(1_000);
+        expect(store.getSnapshot()).toBe('10 seconds ago');
+
+        unsubscribe();
+    });
+
+    describe('getParts', () => {
+        it('exposes the decision behind the text', () => {
+            const store = createRelativeTimeStore(NOW.getTime() - 3 * HOUR, { locale: 'en' });
+
+            expect(store.getParts()).toEqual({ value: -3, unit: 'hour', text: '3 hours ago' });
+        });
+
+        it('keeps one object identity until the text moves', () => {
+            const store = createRelativeTimeStore(NOW.getTime() - 3 * DAY, { locale: 'en' });
+            const unsubscribe = store.subscribe(() => {});
+
+            const first = store.getParts();
+
+            vi.advanceTimersByTime(6 * HOUR);
+            expect(store.getParts()).toBe(first);
+
+            vi.advanceTimersByTime(20 * HOUR);
+            expect(store.getParts()).not.toBe(first);
+            expect(store.getParts()).toEqual({ value: -4, unit: 'day', text: '4 days ago' });
+
+            unsubscribe();
+        });
+    });
+
+    it('collapses a fresh timestamp to "now" for the length of the just-now window', () => {
+        const store = createRelativeTimeStore(NOW.getTime(), {
+            locale: 'en',
+            justNowSeconds: 45,
+        });
+        const unsubscribe = store.subscribe(() => {});
+
+        vi.advanceTimersByTime(30_000);
+        expect(store.getSnapshot()).toBe('now');
+
+        vi.advanceTimersByTime(20_000);
+        expect(store.getSnapshot()).toBe('50 seconds ago');
 
         unsubscribe();
     });

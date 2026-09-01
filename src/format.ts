@@ -1,5 +1,5 @@
 import { selectUnit } from './selectUnit';
-import type { DateInput, RelativeTimeOptions, RelativeTimeParts } from './types';
+import type { DateInput, RelativeTimeOptions, RelativeTimeResult } from './types';
 
 export function toMs(input: DateInput): number {
     const ms =
@@ -33,7 +33,9 @@ function getFormatter(options: RelativeTimeOptions): Intl.RelativeTimeFormat {
 
     let formatter = formatters.get(key);
 
-    if (!formatter) {
+    if (formatter) {
+        formatters.delete(key);
+    } else {
         formatter = new Intl.RelativeTimeFormat(locale as string | string[] | undefined, {
             style,
             numeric,
@@ -42,9 +44,9 @@ function getFormatter(options: RelativeTimeOptions): Intl.RelativeTimeFormat {
         if (formatters.size >= MAX_FORMATTERS) {
             formatters.delete(formatters.keys().next().value as string);
         }
-
-        formatters.set(key, formatter);
     }
+
+    formatters.set(key, formatter);
 
     return formatter;
 }
@@ -53,10 +55,27 @@ export function formatAt(
     targetMs: number,
     baseMs: number,
     options: RelativeTimeOptions
-): RelativeTimeParts & { text: string } {
-    const parts = selectUnit(baseMs, targetMs);
+): RelativeTimeResult {
+    const parts = selectUnit(baseMs, targetMs, options);
 
     return { ...parts, text: getFormatter(options).format(parts.value, parts.unit) };
+}
+
+/**
+ * The same formatting as `relativeTime`, with the decision that produced it:
+ * `{ value: -3, unit: 'minute', text: '3 minutes ago' }`.
+ *
+ * Saves re-deriving the unit when the markup needs more than the words — a
+ * `<time>` element that also wants the unit, or a UI that drops to an absolute
+ * date once the distance reaches years.
+ */
+export function relativeTimeParts(
+    date: DateInput,
+    options: RelativeTimeOptions = {}
+): RelativeTimeResult {
+    const base = options.now === undefined ? Date.now() : toMs(options.now);
+
+    return formatAt(toMs(date), base, options);
 }
 
 /**
@@ -66,7 +85,5 @@ export function formatAt(
  * every locale the platform knows works without shipping any locale data.
  */
 export function relativeTime(date: DateInput, options: RelativeTimeOptions = {}): string {
-    const base = options.now === undefined ? Date.now() : toMs(options.now);
-
-    return formatAt(toMs(date), base, options).text;
+    return relativeTimeParts(date, options).text;
 }
