@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/relative-time-lite.svg)](https://www.npmjs.com/package/relative-time-lite)
 [![npm downloads](https://img.shields.io/npm/dm/relative-time-lite.svg)](https://www.npmjs.com/package/relative-time-lite)
 
-Relative time formatting — "3 minutes ago", "in 2 months" — in **1.04 kB gzipped**, with a live-updating React hook in the box.
+Relative time formatting — "3 minutes ago", "in 2 months" — in **1.19 kB gzipped**, with a live-updating React hook in the box.
 
 ```sh
 npm install relative-time-lite
@@ -43,6 +43,7 @@ function PostedAt({ at }: { at: string }) {
 | **No locale data**          | `Intl.RelativeTimeFormat` has been in every browser since 2020 and in Node since 12. Bundling 400 kB of translations to repeat what the platform already knows is the mistake this package avoids.                               |
 | **Calendar-correct**        | Months are 28–31 days and years are 365 or 366. Month and year distances come from the calendar, not from a 30.44-day average, so "1 month ago" means the same day last month.                                                   |
 | **Paced, not polled**       | A live timestamp sleeps until the moment its own words are due to change — a "2 hours ago" wakes when it becomes three, not on a half-hourly grid. No `setInterval` running for the life of the page.                            |
+| **One timer for the page**  | Every live timestamp shares a single `setTimeout`, aimed at whichever deadline comes first. A feed of two hundred comments arms one timer, not two hundred.                                                                      |
 | **Quiet in the background** | Updates stop while the tab is hidden and catch up the moment it comes back, on a window focus, or on a restore from the back/forward cache — so a timer a sleeping machine never fired cannot leave a stale timestamp on screen. |
 | **React-free core**         | React is only reachable through `relative-time-lite/react`, enforced by a build check. The root entry imports nothing.                                                                                                           |
 
@@ -62,13 +63,14 @@ relativeTime('2024-01-01T00:00:00Z');
 
 #### Options
 
-| Option        | Type                            | Default         | Description                                      |
-| ------------- | ------------------------------- | --------------- | ------------------------------------------------ |
-| `locale`      | `string \| readonly string[]`   | runtime default | BCP 47 tag, or a fallback list.                  |
-| `style`       | `'long' \| 'short' \| 'narrow'` | `'long'`        | Passed through to `Intl.RelativeTimeFormat`.     |
-| `numeric`     | `'always' \| 'auto'`            | `'auto'`        | `'auto'` prefers "yesterday" over "1 day ago".   |
-| `justNowText` | `string`                        | —               | Wording for the `justNowSeconds` window.         |
-| `now`         | `Date \| number \| string`      | `Date.now()`    | Measure from a fixed point instead of the clock. |
+| Option        | Type                             | Default         | Description                                      |
+| ------------- | -------------------------------- | --------------- | ------------------------------------------------ |
+| `locale`      | `string \| readonly string[]`    | runtime default | BCP 47 tag, or a fallback list.                  |
+| `style`       | `'long' \| 'short' \| 'narrow'`  | `'long'`        | Passed through to `Intl.RelativeTimeFormat`.     |
+| `numeric`     | `'always' \| 'auto'`             | `'auto'`        | `'auto'` prefers "yesterday" over "1 day ago".   |
+| `justNowText` | `string`                         | —               | Wording for the `justNowSeconds` window.         |
+| `format`      | `(input) => string \| undefined` | —               | Your own wording, consulted first.               |
+| `now`         | `Date \| number \| string`       | `Date.now()`    | Measure from a fixed point instead of the clock. |
 
 Four more shape the unit itself, and are accepted everywhere a distance is measured — `relativeTime`, `relativeTimeParts`, `selectUnit`, the store and both hooks:
 
@@ -86,6 +88,22 @@ relativeTime(ts, { rounding: 'floor' }); // → '59 minutes ago', not '1 hour ag
 relativeTime(ts, { minUnit: 'minute' }); // → 'this minute', never seconds
 relativeTime(ts, { maxUnit: 'day' }); // → '90 days ago', never months
 ```
+
+#### Wording of your own
+
+`format` is consulted before anything else, and returning `undefined` hands the decision back — to `justNowText` if its window applies, and to `Intl.RelativeTimeFormat` otherwise. It receives the chosen unit and both instants in epoch milliseconds:
+
+```ts
+relativeTime(ts, {
+    locale: 'en',
+    format: ({ value, unit, date }) =>
+        unit === 'day' && value === -1 ? `yesterday at ${time(date)}` : undefined,
+});
+```
+
+That covers the cases the ladder has no vocabulary for — a "just now" without a `justNowSeconds` window, a language whose plural rules `Intl` gets wrong for your copy, an emoji. A `format` that answers every call replaces `Intl.RelativeTimeFormat` outright, which is also the way to run on a platform that does not have it.
+
+Live stores and hooks pace themselves on the text your function returns, so a stable string means fewer wake-ups, not more.
 
 `maxUnit` is also the way to hand off to an absolute date: cap the ladder, read the `unit` back from `relativeTimeParts`, and render a real date once it reaches the cap.
 
@@ -128,7 +146,7 @@ Same arguments as `relativeTime`, plus the store's own `refreshMs` and `trackVis
 
 Built on `useSyncExternalStore`, so the clock stays the source of truth, concurrent rendering sees a consistent value within a pass, and there is no `useState`/`useEffect` handshake to tear. The timer is torn down on unmount.
 
-Inline arguments are safe: `useRelativeTime(new Date(x), { locale: ['en'] })` does not rebuild the underlying timer on every render — the date and options are reduced to primitives first.
+Inline arguments are safe: `useRelativeTime(new Date(x), { locale: ['en'] })` does not rebuild the underlying store on every render — the date and options are reduced to primitives first. A date or an option that genuinely changes is pushed into the store the component already has, so the subscription survives and the component re-renders only if the words moved. (A `format` function is compared by identity like any other dependency: hoist it, or memoise it, to keep that true.)
 
 A `null`, `undefined` or unparsable date renders an empty string rather than throwing, so a timestamp that may not have arrived yet — or one a row of API data got wrong — does not force a conditional hook and cannot take the tree down:
 
@@ -187,6 +205,17 @@ Two options belong to the store alone:
 
 A pinned `now` freezes the distance, so such a store schedules nothing and watches nothing — it is a formatted string with a `subscribe` that never fires.
 
+`setDate(date)` and `setOptions(options)` move a store that is already subscribed, so a list that re-orders or a locale switch does not have to tear down and rebuild one:
+
+```ts
+store.setDate(comment.editedAt);
+store.setOptions({ locale: 'ru', maxUnit: 'day' });
+```
+
+Both keep every subscription, re-pace the timer, and notify only if the words actually changed. `setOptions` replaces the option set rather than patching it, so pass everything you want kept.
+
+Every live store shares one `setTimeout`, always aimed at the earliest deadline any of them is waiting for. Two hundred stores are two hundred entries in a set and one timer; the last unsubscribe clears it.
+
 ### `selectUnit(fromMs, toMs, options?): { value, unit }`
 
 The pure unit picker, exported for anyone who wants the decision without the formatting — a custom formatter, `<time>` tooltips, tests.
@@ -234,10 +263,10 @@ Measured gzipped, with `size-limit`:
 
 | Import                                      | Size    |
 | ------------------------------------------- | ------- |
-| `import { selectUnit }`                     | 695 B   |
-| `import { relativeTime }`                   | 1.04 kB |
-| the whole root entry                        | 1.62 kB |
-| `relative-time-lite/react` (React excluded) | 1.80 kB |
+| `import { selectUnit }`                     | 701 B   |
+| `import { relativeTime }`                   | 1.19 kB |
+| the whole root entry                        | 2.16 kB |
+| `relative-time-lite/react` (React excluded) | 2.45 kB |
 
 The package is side-effect free and every export is tree-shakeable, so importing only `relativeTime` leaves the auto-update engine out of your bundle entirely.
 
@@ -251,7 +280,7 @@ The package is side-effect free and every export is tree-shakeable, so importing
 
 ## Requirements
 
-Any runtime with `Intl.RelativeTimeFormat`: Node 12+, and every browser since early 2020. Node builds without full ICU (`--with-intl=small-icu`) only carry English — use `full-icu` if you need more.
+Any runtime with `Intl.RelativeTimeFormat`: Node 12+, and every browser since early 2020. A runtime without it throws a `TypeError` naming the package on the first call that needs wording — load a polyfill, or pass a `format` function and the platform formatter is never reached. Node builds without full ICU (`--with-intl=small-icu`) only carry English — use `full-icu` if you need more.
 
 ## License
 

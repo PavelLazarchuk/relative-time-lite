@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 
 import { toMs, tryToMs } from '../format';
 import { createRelativeTimeStore } from '../store';
@@ -13,7 +13,11 @@ const EMPTY_STORE: RelativeTimeStore = {
     subscribe: () => noop,
     getSnapshot: () => '',
     getParts: () => NO_PARTS,
+    setDate: noop,
+    setOptions: noop,
 };
+
+const useApplyEffect = typeof document === 'undefined' ? useEffect : useLayoutEffect;
 
 function useRelativeTimeStore(
     date: DateInput | null | undefined,
@@ -29,6 +33,7 @@ function useRelativeTimeStore(
         rounding,
         justNowSeconds,
         justNowText,
+        format,
         refreshMs,
         trackVisibility,
     } = options;
@@ -39,12 +44,10 @@ function useRelativeTimeStore(
     const localeIsList = typeof locale !== 'string';
     const localeKey = typeof locale === 'string' ? locale : (locale ?? []).join('\u0000');
 
-    return useMemo(() => {
-        if (target === undefined) return EMPTY_STORE;
-
+    const storeOptions = useMemo(() => {
         const tags = localeIsList ? (localeKey ? localeKey.split('\u0000') : undefined) : localeKey;
 
-        return createRelativeTimeStore(target, {
+        return {
             locale: tags,
             style,
             numeric,
@@ -54,11 +57,11 @@ function useRelativeTimeStore(
             rounding,
             justNowSeconds,
             justNowText,
+            format,
             refreshMs,
             trackVisibility,
-        });
+        } satisfies RelativeTimeStoreOptions;
     }, [
-        target,
         localeIsList,
         localeKey,
         style,
@@ -69,9 +72,33 @@ function useRelativeTimeStore(
         rounding,
         justNowSeconds,
         justNowText,
+        format,
         refreshMs,
         trackVisibility,
     ]);
+
+    const ref = useRef<RelativeTimeStore | null>(null);
+    const applied = useRef(storeOptions);
+
+    if (ref.current === null && target !== undefined) {
+        ref.current = createRelativeTimeStore(target, storeOptions);
+        applied.current = storeOptions;
+    }
+
+    const store = target === undefined ? EMPTY_STORE : (ref.current as RelativeTimeStore);
+
+    useApplyEffect(() => {
+        if (target === undefined || ref.current === null) return;
+
+        ref.current.setDate(target);
+
+        if (applied.current !== storeOptions) {
+            applied.current = storeOptions;
+            ref.current.setOptions(storeOptions);
+        }
+    }, [target, storeOptions]);
+
+    return store;
 }
 
 /**
@@ -125,6 +152,8 @@ export function useRelativeTimeParts(
 
 export type {
     DateInput,
+    RelativeTimeFormatInput,
+    RelativeTimeFormatter,
     RelativeTimeOptions,
     RelativeTimeResult,
     RelativeTimeStoreOptions,

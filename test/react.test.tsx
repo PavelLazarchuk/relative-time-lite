@@ -228,3 +228,87 @@ describe('useRelativeTimeParts', () => {
         expect(text()).toBe('none');
     });
 });
+
+describe('one store per component', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    });
+
+    afterEach(() => {
+        cleanup();
+        vi.useRealTimers();
+    });
+
+    it('follows a new date without tearing down the subscription', () => {
+        const { rerender } = render(
+            <Stamp date={NOW.getTime() - 3 * HOUR} options={{ locale: 'en' }} />
+        );
+
+        expect(text()).toBe('3 hours ago');
+        expect(vi.getTimerCount()).toBe(1);
+
+        rerender(<Stamp date={NOW.getTime() - 2 * MINUTE} options={{ locale: 'en' }} />);
+
+        expect(text()).toBe('2 minutes ago');
+        expect(vi.getTimerCount()).toBe(1);
+
+        act(() => void vi.advanceTimersByTime(MINUTE));
+        expect(text()).toBe('3 minutes ago');
+    });
+
+    it('follows a new option set, and keeps pacing itself on it', () => {
+        const { rerender } = render(
+            <Stamp date={NOW.getTime() - 3 * HOUR} options={{ locale: 'en' }} />
+        );
+
+        rerender(
+            <Stamp date={NOW.getTime() - 3 * HOUR} options={{ locale: 'en', style: 'short' }} />
+        );
+
+        expect(text()).toBe('3 hr. ago');
+
+        act(() => void vi.advanceTimersByTime(HOUR));
+        expect(text()).toBe('4 hr. ago');
+    });
+
+    it('leaves nothing running once the tree goes away', () => {
+        const { unmount } = render(<Stamp date={NOW.getTime()} options={{ locale: 'en' }} />);
+
+        expect(vi.getTimerCount()).toBe(1);
+
+        unmount();
+
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('renders an empty string while the date is missing, and picks it up when it arrives', () => {
+        const { rerender } = render(
+            <Stamp date={null as unknown as DateInput} options={{ locale: 'en' }} />
+        );
+
+        expect(text()).toBe('');
+
+        rerender(<Stamp date={NOW.getTime() - 3 * HOUR} options={{ locale: 'en' }} />);
+
+        expect(text()).toBe('3 hours ago');
+
+        rerender(<Stamp date={null as unknown as DateInput} options={{ locale: 'en' }} />);
+
+        expect(text()).toBe('');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('takes wording from a `format` function and keeps it live', () => {
+        const format = ({ value, unit }: { value: number; unit: string }) =>
+            `${-value} ${unit} back`;
+
+        render(<Stamp date={NOW.getTime() - 3 * HOUR} options={{ locale: 'en', format }} />);
+
+        expect(text()).toBe('3 hour back');
+
+        act(() => void vi.advanceTimersByTime(HOUR));
+        expect(text()).toBe('4 hour back');
+    });
+});

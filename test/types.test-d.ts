@@ -2,7 +2,10 @@ import { describe, expectTypeOf, it } from 'vitest';
 
 import { createRelativeTimeStore, relativeTime, relativeTimeParts, selectUnit } from '../src/index';
 import type {
+    DateInput,
+    RelativeTimeFormatInput,
     RelativeTimeOptions,
+    RelativeTimeStoreOptions,
     RelativeTimeResult,
     RelativeTimeUnit,
     SelectUnitOptions,
@@ -57,5 +60,31 @@ describe('public types', () => {
         expectTypeOf(relativeTimeParts(0)).toEqualTypeOf<RelativeTimeResult>();
         expectTypeOf(relativeTimeParts(0).text).toBeString();
         expectTypeOf(relativeTimeParts(0).unit).toEqualTypeOf<RelativeTimeUnit>();
+    });
+
+    it('lets the store be pointed somewhere else', () => {
+        const store = createRelativeTimeStore(0);
+
+        expectTypeOf(store.setDate).toEqualTypeOf<(date: DateInput) => void>();
+        expectTypeOf(store.setOptions).toEqualTypeOf<(options: RelativeTimeStoreOptions) => void>();
+        expectTypeOf(store.setDate).toBeCallableWith(new Date());
+    });
+
+    it('hands a custom formatter the unit and both instants', () => {
+        expectTypeOf(relativeTime).toBeCallableWith(0, {
+            format: ({ value, unit, date, now }) => {
+                expectTypeOf(value).toBeNumber();
+                expectTypeOf(unit).toEqualTypeOf<RelativeTimeUnit>();
+                expectTypeOf(date).toBeNumber();
+                expectTypeOf(now).toBeNumber();
+
+                return undefined;
+            },
+        });
+
+        expectTypeOf<RelativeTimeFormatInput['unit']>().toEqualTypeOf<RelativeTimeUnit>();
+        expectTypeOf<NonNullable<RelativeTimeOptions['format']>>().returns.toEqualTypeOf<
+            string | undefined
+        >();
     });
 });

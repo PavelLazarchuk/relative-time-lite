@@ -11,6 +11,13 @@ export interface RelativeTimeResult extends RelativeTimeParts {
     text: string;
 }
 
+export interface RelativeTimeFormatInput extends RelativeTimeParts {
+    date: number;
+    now: number;
+}
+
+export type RelativeTimeFormatter = (input: RelativeTimeFormatInput) => string | undefined;
+
 export interface SelectUnitOptions {
     minUnit?: RelativeTimeUnit;
     maxUnit?: RelativeTimeUnit;
@@ -23,6 +30,7 @@ export interface RelativeTimeOptions extends SelectUnitOptions {
     style?: 'long' | 'short' | 'narrow';
     numeric?: 'always' | 'auto';
     justNowText?: string;
+    format?: RelativeTimeFormatter;
     now?: DateInput;
 }
 

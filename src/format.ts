@@ -29,6 +29,12 @@ const formatters = new Map<string, Intl.RelativeTimeFormat>();
 const MAX_FORMATTERS = 64;
 
 function getFormatter(options: RelativeTimeOptions): Intl.RelativeTimeFormat {
+    if (typeof Intl === 'undefined' || typeof Intl.RelativeTimeFormat !== 'function') {
+        throw new TypeError(
+            'relative-time-lite: this runtime has no Intl.RelativeTimeFormat — load a polyfill, or pass a `format` function.'
+        );
+    }
+
     const { locale, style = 'long', numeric = 'auto' } = options;
 
     const tags =
@@ -63,14 +69,18 @@ export function formatAt(
     options: RelativeTimeOptions
 ): RelativeTimeResult {
     const parts = selectUnit(baseMs, targetMs, options);
-    const { justNowText, justNowSeconds = 0 } = options;
+    const { format, justNowText, justNowSeconds = 0 } = options;
+
+    const custom = format?.({ ...parts, date: targetMs, now: baseMs });
 
     const text =
-        justNowText !== undefined &&
-        justNowSeconds > 0 &&
-        Math.abs(targetMs - baseMs) < justNowSeconds * 1000
-            ? justNowText
-            : getFormatter(options).format(parts.value, parts.unit);
+        custom !== undefined
+            ? custom
+            : justNowText !== undefined &&
+                justNowSeconds > 0 &&
+                Math.abs(targetMs - baseMs) < justNowSeconds * 1000
+              ? justNowText
+              : getFormatter(options).format(parts.value, parts.unit);
 
     return { ...parts, text };
 }

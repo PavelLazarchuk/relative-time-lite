@@ -244,3 +244,70 @@ describe('unit options reach the formatter', () => {
         );
     });
 });
+
+describe('custom wording', () => {
+    const at = new Date('2024-03-15T12:00:00.000Z');
+    const now = new Date('2024-03-15T13:30:00.000Z');
+
+    it('takes the words from `format` when it returns a string', () => {
+        expect(
+            relativeTime(at, {
+                locale: 'en',
+                now,
+                format: ({ value, unit }) => `${-value}${unit[0]} ago`,
+            })
+        ).toBe('2h ago');
+    });
+
+    it('hands the decision back when `format` returns undefined', () => {
+        expect(
+            relativeTime(at, {
+                locale: 'en',
+                now,
+                format: ({ unit }) => (unit === 'day' ? 'a day-ish' : undefined),
+            })
+        ).toBe('2 hours ago');
+    });
+
+    it('receives the unit and both instants', () => {
+        const format = vi.fn(() => 'x');
+
+        relativeTime(at, { locale: 'en', now, format });
+
+        expect(format).toHaveBeenCalledWith({
+            value: -2,
+            unit: 'hour',
+            date: at.getTime(),
+            now: now.getTime(),
+        });
+    });
+
+    it('wins over `justNowText`, which stays available as the fallback', () => {
+        const options = { locale: 'en', justNowSeconds: 45, justNowText: 'just now' } as const;
+
+        expect(relativeTime(at, { ...options, now: at, format: () => 'brand new' })).toBe(
+            'brand new'
+        );
+        expect(relativeTime(at, { ...options, now: at, format: () => undefined })).toBe('just now');
+    });
+
+    it('replaces the platform formatter rather than dressing it up', () => {
+        const RelativeTimeFormat = Intl.RelativeTimeFormat;
+
+        Object.defineProperty(Intl, 'RelativeTimeFormat', { configurable: true, value: undefined });
+
+        try {
+            expect(relativeTime(at, { now, format: () => 'two hours back' })).toBe(
+                'two hours back'
+            );
+            expect(() => relativeTime(at, { now })).toThrow(
+                /relative-time-lite: this runtime has no Intl\.RelativeTimeFormat/
+            );
+        } finally {
+            Object.defineProperty(Intl, 'RelativeTimeFormat', {
+                configurable: true,
+                value: RelativeTimeFormat,
+            });
+        }
+    });
+});

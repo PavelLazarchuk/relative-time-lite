@@ -458,7 +458,7 @@ describe('just-now pacing', () => {
 
         const texts: string[] = [];
 
-        store.subscribe(() => texts.push(store.getSnapshot()));
+        const unsubscribe = store.subscribe(() => texts.push(store.getSnapshot()));
 
         expect(store.getSnapshot()).toBe('just now');
 
@@ -469,6 +469,8 @@ describe('just-now pacing', () => {
         vi.advanceTimersByTime(1);
 
         expect(texts).toEqual(['5 seconds ago']);
+
+        unsubscribe();
     });
 
     it('wakes at the end of the window for a past target', () => {
@@ -481,7 +483,7 @@ describe('just-now pacing', () => {
 
         const texts: string[] = [];
 
-        store.subscribe(() => texts.push(store.getSnapshot()));
+        const unsubscribe = store.subscribe(() => texts.push(store.getSnapshot()));
 
         vi.advanceTimersByTime(2_999);
 
@@ -490,5 +492,240 @@ describe('just-now pacing', () => {
         vi.advanceTimersByTime(1);
 
         expect(texts).toEqual(['5 seconds ago']);
+
+        unsubscribe();
+    });
+});
+
+describe('one timer for the page', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('keeps a single timer however many stores are live', () => {
+        const count = 50;
+        const stores = Array.from({ length: count }, (_, index) =>
+            createRelativeTimeStore(NOW.getTime() - index * MINUTE, { locale: 'en' })
+        );
+        const stops = stores.map(store => store.subscribe(() => {}));
+
+        expect(vi.getTimerCount()).toBe(1);
+
+        vi.advanceTimersByTime(31 * MINUTE);
+
+        expect(stores[0]!.getSnapshot()).toBe('31 minutes ago');
+        expect(stores[count - 1]!.getSnapshot()).toBe('1 hour ago');
+        expect(vi.getTimerCount()).toBe(1);
+
+        for (const stop of stops) stop();
+
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('wakes each store at its own deadline, and only at its own deadline', () => {
+        const order: string[] = [];
+
+        const stops = [DAY, MINUTE, HOUR].map(offset => {
+            const store = createRelativeTimeStore(NOW.getTime() - offset, { locale: 'en' });
+
+            return store.subscribe(() => order.push(store.getSnapshot()));
+        });
+
+        vi.advanceTimersByTime(90_000);
+
+        // The minute has moved twice; the hour and the day are still hours off.
+        expect(order).toEqual(['2 minutes ago', '3 minutes ago']);
+
+        vi.advanceTimersByTime(29 * MINUTE);
+
+        expect(order).toContain('2 hours ago');
+        expect(order.filter(text => text.includes('day'))).toHaveLength(0);
+
+        for (const stop of stops) stop();
+    });
+
+    it("drops one store's timer without disarming the others", () => {
+        const near = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
+        const far = createRelativeTimeStore(NOW.getTime() - 3 * HOUR, { locale: 'en' });
+
+        const stopNear = near.subscribe(() => {});
+        const stopFar = far.subscribe(() => {});
+
+        stopNear();
+
+        expect(vi.getTimerCount()).toBe(1);
+
+        vi.advanceTimersByTime(31 * MINUTE);
+
+        expect(far.getSnapshot()).toBe('4 hours ago');
+
+        stopFar();
+    });
+});
+
+describe('setDate', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('moves the store to another timestamp and re-paces it', () => {
+        const store = createRelativeTimeStore(NOW.getTime() - 3 * HOUR, { locale: 'en' });
+        const listener = vi.fn();
+        const unsubscribe = store.subscribe(listener);
+
+        store.setDate(NOW.getTime() - 10_000);
+
+        expect(store.getSnapshot()).toBe('10 seconds ago');
+        expect(listener).toHaveBeenCalledTimes(1);
+
+        vi.advanceTimersByTime(1000);
+
+        expect(store.getSnapshot()).toBe('11 seconds ago');
+
+        unsubscribe();
+    });
+
+    it('says nothing when the words come out the same', () => {
+        const store = createRelativeTimeStore(NOW.getTime() - 3 * HOUR, { locale: 'en' });
+        const listener = vi.fn();
+        const unsubscribe = store.subscribe(listener);
+
+        store.setDate(NOW.getTime() - 3 * HOUR - MINUTE);
+
+        expect(store.getSnapshot()).toBe('3 hours ago');
+        expect(listener).not.toHaveBeenCalled();
+
+        unsubscribe();
+    });
+
+    it('is a no-op for the timestamp already in place', () => {
+        const store = createRelativeTimeStore(NOW.getTime() - 3 * HOUR, { locale: 'en' });
+        const parts = store.getParts();
+
+        store.setDate(new Date(NOW.getTime() - 3 * HOUR));
+
+        expect(store.getParts()).toBe(parts);
+    });
+
+    it('rejects a date the platform cannot parse', () => {
+        const store = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
+
+        expect(() => store.setDate('not a date')).toThrow(TypeError);
+    });
+
+    it('re-reads on demand while nothing is subscribed', () => {
+        const store = createRelativeTimeStore(NOW.getTime() - 3 * HOUR, { locale: 'en' });
+
+        expect(store.getSnapshot()).toBe('3 hours ago');
+
+        store.setDate(NOW.getTime() - DAY);
+
+        expect(store.getSnapshot()).toBe('yesterday');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+});
+
+describe('setOptions', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('replaces the option set and notifies once', () => {
+        const store = createRelativeTimeStore(NOW.getTime() - 3 * HOUR, { locale: 'en' });
+        const listener = vi.fn();
+        const unsubscribe = store.subscribe(listener);
+
+        store.setOptions({ locale: 'ru' });
+
+        expect(store.getSnapshot()).toBe('3 часа назад');
+        expect(listener).toHaveBeenCalledTimes(1);
+
+        unsubscribe();
+    });
+
+    it('keeps every subscription across the change', () => {
+        const store = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
+        const listener = vi.fn();
+        const unsubscribe = store.subscribe(listener);
+
+        store.setOptions({ locale: 'en', style: 'short' });
+        listener.mockClear();
+
+        vi.advanceTimersByTime(5000);
+
+        expect(listener).toHaveBeenCalled();
+        expect(store.getSnapshot()).toBe('5 sec. ago');
+
+        unsubscribe();
+    });
+
+    it('re-paces on the new options', () => {
+        const store = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
+        const unsubscribe = store.subscribe(() => {});
+
+        store.setOptions({ locale: 'en', refreshMs: 10_000 });
+
+        vi.advanceTimersByTime(9_000);
+        expect(store.getSnapshot()).toBe('now');
+
+        vi.advanceTimersByTime(1_000);
+        expect(store.getSnapshot()).toBe('10 seconds ago');
+
+        unsubscribe();
+    });
+
+    it('stops watching and scheduling once `now` is pinned, and starts again when it is not', () => {
+        const store = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
+        const unsubscribe = store.subscribe(() => {});
+
+        store.setOptions({ locale: 'en', now: NOW.getTime() - 5 * MINUTE });
+
+        expect(store.getSnapshot()).toBe('in 5 minutes');
+        expect(vi.getTimerCount()).toBe(0);
+
+        vi.advanceTimersByTime(HOUR);
+        expect(store.getSnapshot()).toBe('in 5 minutes');
+
+        store.setOptions({ locale: 'en' });
+
+        expect(store.getSnapshot()).toBe('1 hour ago');
+        expect(vi.getTimerCount()).toBe(1);
+
+        unsubscribe();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('suspends on visibility again after visibility tracking is turned back on', () => {
+        const store = createRelativeTimeStore(NOW.getTime(), {
+            locale: 'en',
+            trackVisibility: false,
+        });
+        const unsubscribe = store.subscribe(() => {});
+
+        store.setOptions({ locale: 'en' });
+
+        setHidden(true);
+        expect(vi.getTimerCount()).toBe(0);
+
+        setHidden(false);
+        unsubscribe();
     });
 });

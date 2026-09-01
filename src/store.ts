@@ -1,4 +1,6 @@
 import { formatAt, toMs } from './format';
+import { cancel, schedule } from './schedule';
+import type { ScheduledTask } from './schedule';
 import type {
     DateInput,
     RelativeTimeParts,
@@ -11,6 +13,8 @@ export interface RelativeTimeStore {
     subscribe: (listener: () => void) => () => void;
     getSnapshot: () => string;
     getParts: () => RelativeTimeResult;
+    setDate: (date: DateInput) => void;
+    setOptions: (options: RelativeTimeStoreOptions) => void;
 }
 
 const MIN_DELAY = 250;
@@ -118,37 +122,47 @@ export function createRelativeTimeStore(
     date: DateInput,
     options: RelativeTimeStoreOptions = {}
 ): RelativeTimeStore {
-    const { refreshMs, trackVisibility = true } = options;
-
-    const target = toMs(date);
-    const base = options.now === undefined ? undefined : toMs(options.now);
     const listeners = new Set<() => void>();
 
-    const live = base === undefined;
+    let opts = options;
+    let target = toMs(date);
+    let base = opts.now === undefined ? undefined : toMs(opts.now);
+    let live = base === undefined;
 
     let current: RelativeTimeResult | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let task: ScheduledTask | undefined;
+    let watching = false;
 
     const hidden = () =>
-        trackVisibility && typeof document !== 'undefined' && document.hidden === true;
+        opts.trackVisibility !== false &&
+        typeof document !== 'undefined' &&
+        document.hidden === true;
 
-    const schedule = (diff: number, parts: RelativeTimeParts) => {
-        clearTimeout(timer);
-        timer = undefined;
+    const stop = () => {
+        cancel(task);
+        task = undefined;
+    };
+
+    const scheduleNext = (diff: number, parts: RelativeTimeParts) => {
+        stop();
 
         if (hidden()) return;
 
-        timer = setTimeout(
+        const { refreshMs } = opts;
+
+        task = schedule(
             tick,
-            refreshMs === undefined ? nextDelay(diff, parts, options) : clamp(refreshMs)
+            refreshMs === undefined ? nextDelay(diff, parts, opts) : clamp(refreshMs)
         );
     };
 
     function tick() {
-        const now = base ?? Date.now();
-        const result = formatAt(target, now, options);
+        task = undefined;
 
-        if (live) schedule(target - now, result);
+        const now = base ?? Date.now();
+        const result = formatAt(target, now, opts);
+
+        if (live) scheduleNext(target - now, result);
 
         if (current?.text === result.text) return;
 
@@ -167,10 +181,10 @@ export function createRelativeTimeStore(
      * subscription.
      */
     const read = () => {
-        if (current === undefined) return (current = formatAt(target, base ?? Date.now(), options));
+        if (current === undefined) return (current = formatAt(target, base ?? Date.now(), opts));
 
         if (live && !listeners.size) {
-            const next = formatAt(target, Date.now(), options);
+            const next = formatAt(target, Date.now(), opts);
 
             if (next.text !== current.text) current = next;
         }
@@ -180,11 +194,44 @@ export function createRelativeTimeStore(
 
     const resync = () => {
         if (hidden()) {
-            clearTimeout(timer);
-            timer = undefined;
+            stop();
         } else if (listeners.size) {
             tick();
         }
+    };
+
+    const syncWatcher = () => {
+        const wanted =
+            listeners.size > 0 &&
+            live &&
+            opts.trackVisibility !== false &&
+            typeof document !== 'undefined';
+
+        if (wanted === watching) return;
+
+        watching = wanted;
+
+        if (wanted) {
+            watchers.add(resync);
+            startListening();
+        } else if (watchers.delete(resync) && !watchers.size) {
+            stopListening();
+        }
+    };
+
+    const reset = () => {
+        stop();
+        syncWatcher();
+
+        const previous = current?.text;
+
+        current = undefined;
+
+        if (!listeners.size) return;
+
+        tick();
+
+        if (current!.text !== previous) for (const listener of [...listeners]) listener();
     };
 
     return {
@@ -192,22 +239,17 @@ export function createRelativeTimeStore(
             listeners.add(listener);
 
             if (listeners.size === 1) {
-                if (live && trackVisibility && typeof document !== 'undefined') {
-                    watchers.add(resync);
-                    startListening();
-                }
-
+                syncWatcher();
                 tick();
             }
 
             return () => {
                 listeners.delete(listener);
+
                 if (listeners.size) return;
 
-                clearTimeout(timer);
-                timer = undefined;
-
-                if (watchers.delete(resync) && !watchers.size) stopListening();
+                stop();
+                syncWatcher();
             };
         },
 
@@ -217,6 +259,23 @@ export function createRelativeTimeStore(
 
         getParts() {
             return read();
+        },
+
+        setDate(next) {
+            const ms = toMs(next);
+
+            if (ms === target) return;
+
+            target = ms;
+            reset();
+        },
+
+        setOptions(next) {
+            opts = next;
+            base = next.now === undefined ? undefined : toMs(next.now);
+            live = base === undefined;
+
+            reset();
         },
     };
 }
