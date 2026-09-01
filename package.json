@@ -1,6 +1,6 @@
 {
     "name": "relative-time-lite",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Relative time formatting in about a kilobyte, on top of the platform's Intl.RelativeTimeFormat — no bundled locale data, calendar-correct units, and a self-pacing live updater with a React hook.",
     "license": "MIT",
     "sideEffects": false,
