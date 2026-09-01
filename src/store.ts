@@ -51,9 +51,12 @@ function nextDelay(
     options: RelativeTimeStoreOptions
 ): number {
     const { rounding = 'round', justNowSeconds = 0 } = options;
-    const untilJustNowEnds = justNowSeconds * 1000 - Math.abs(diff);
+    const justNowMs = justNowSeconds * 1000;
 
-    if (untilJustNowEnds > 0) return clamp(untilJustNowEnds);
+    // The window ends once the distance grows back to `justNowSeconds`, which is
+    // `justNowMs + diff` away whichever side of now the target sits on: a target
+    // still `diff` in the future has to reach now first, and only then drift out.
+    if (Math.abs(diff) < justNowMs) return clamp(justNowMs + diff);
 
     const step = STEP[unit];
     const edge = rounding === 'floor' ? (value > 0 ? value : value - 1) : value - 0.5;
@@ -155,7 +158,25 @@ export function createRelativeTimeStore(
         if (notify) for (const listener of [...listeners]) listener();
     }
 
-    const read = () => (current ??= formatAt(target, base ?? Date.now(), options));
+    /**
+     * While nothing is subscribed there are no ticks to keep `current` honest,
+     * so a live store re-reads the clock on demand rather than serving the text
+     * it happened to compute first. The cached object survives whenever the
+     * words are unchanged, which is the identity `getParts` promises and the
+     * stability `useSyncExternalStore` requires between a render and its
+     * subscription.
+     */
+    const read = () => {
+        if (current === undefined) return (current = formatAt(target, base ?? Date.now(), options));
+
+        if (live && !listeners.size) {
+            const next = formatAt(target, Date.now(), options);
+
+            if (next.text !== current.text) current = next;
+        }
+
+        return current;
+    };
 
     const resync = () => {
         if (hidden()) {

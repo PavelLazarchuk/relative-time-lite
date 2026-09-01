@@ -403,3 +403,92 @@ describe('createRelativeTimeStore', () => {
         expect(() => createRelativeTimeStore('not a date')).toThrow(TypeError);
     });
 });
+
+describe('unsubscribed reads', () => {
+    it('re-reads the clock while nothing drives the ticks', () => {
+        vi.useFakeTimers();
+
+        const store = createRelativeTimeStore(Date.now());
+
+        expect(store.getSnapshot()).toBe('now');
+
+        vi.advanceTimersByTime(120_000);
+
+        expect(store.getSnapshot()).toBe('2 minutes ago');
+    });
+
+    it('keeps one object identity until the words move', () => {
+        vi.useFakeTimers();
+
+        const store = createRelativeTimeStore(Date.now());
+        const first = store.getParts();
+
+        vi.advanceTimersByTime(100);
+
+        expect(store.getParts()).toBe(first);
+
+        vi.advanceTimersByTime(120_000);
+
+        expect(store.getParts()).not.toBe(first);
+        expect(store.getParts().text).toBe('2 minutes ago');
+    });
+
+    it('a pinned `now` stays frozen', () => {
+        vi.useFakeTimers();
+
+        const store = createRelativeTimeStore(Date.now(), { now: Date.now() });
+        const first = store.getParts();
+
+        vi.advanceTimersByTime(120_000);
+
+        expect(store.getParts()).toBe(first);
+        expect(store.getSnapshot()).toBe('now');
+    });
+});
+
+describe('just-now pacing', () => {
+    it('wakes once, at the end of the window, for a future target', () => {
+        vi.useFakeTimers();
+
+        const now = Date.now();
+        const store = createRelativeTimeStore(now + 4000, {
+            justNowSeconds: 5,
+            justNowText: 'just now',
+        });
+
+        const texts: string[] = [];
+
+        store.subscribe(() => texts.push(store.getSnapshot()));
+
+        expect(store.getSnapshot()).toBe('just now');
+
+        vi.advanceTimersByTime(8_999);
+
+        expect(texts).toEqual([]);
+
+        vi.advanceTimersByTime(1);
+
+        expect(texts).toEqual(['5 seconds ago']);
+    });
+
+    it('wakes at the end of the window for a past target', () => {
+        vi.useFakeTimers();
+
+        const store = createRelativeTimeStore(Date.now() - 2000, {
+            justNowSeconds: 5,
+            justNowText: 'just now',
+        });
+
+        const texts: string[] = [];
+
+        store.subscribe(() => texts.push(store.getSnapshot()));
+
+        vi.advanceTimersByTime(2_999);
+
+        expect(texts).toEqual([]);
+
+        vi.advanceTimersByTime(1);
+
+        expect(texts).toEqual(['5 seconds ago']);
+    });
+});
