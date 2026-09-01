@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { relativeTime, relativeTimeParts } from '../src/format';
 
@@ -143,6 +143,16 @@ describe('relativeTime', () => {
     });
 
     describe('calendar units', () => {
+        const ORIGINAL_TZ = process.env.TZ;
+
+        beforeAll(() => {
+            process.env.TZ = 'UTC';
+        });
+
+        afterAll(() => {
+            process.env.TZ = ORIGINAL_TZ;
+        });
+
         it('reads a clamped month boundary as a month, as documented', () => {
             expect(
                 relativeTime('2024-01-31T00:00:00Z', {
@@ -200,6 +210,32 @@ describe('unit options reach the formatter', () => {
         expect(relativeTime(ago(20 * 1000), { locale: 'en', now: NOW, justNowSeconds: 45 })).toBe(
             'now'
         );
+    });
+
+    it('uses the given wording inside the just-now window', () => {
+        const options = { locale: 'en', now: NOW, justNowSeconds: 45, justNowText: 'только что' };
+
+        expect(relativeTime(ago(20 * 1000), options)).toBe('только что');
+        expect(relativeTime(ago(44_999), options)).toBe('только что');
+        expect(relativeTime(ago(45 * 1000), options)).toBe('45 seconds ago');
+        expect(relativeTime(ago(-20 * 1000), options)).toBe('только что');
+    });
+
+    it('leaves the wording to the locale without a window to apply it in', () => {
+        expect(
+            relativeTime(ago(20 * 1000), { locale: 'en', now: NOW, justNowText: 'just now' })
+        ).toBe('20 seconds ago');
+    });
+
+    it('keeps the parts behind a just-now wording', () => {
+        expect(
+            relativeTimeParts(ago(20 * 1000), {
+                locale: 'en',
+                now: NOW,
+                justNowSeconds: 45,
+                justNowText: 'just now',
+            })
+        ).toEqual({ value: 0, unit: 'second', text: 'just now' });
     });
 
     it('truncates instead of rounding when asked to', () => {

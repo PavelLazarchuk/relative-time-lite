@@ -22,6 +22,7 @@ export interface RelativeTimeOptions extends SelectUnitOptions {
     locale?: string | readonly string[];
     style?: 'long' | 'short' | 'narrow';
     numeric?: 'always' | 'auto';
+    justNowText?: string;
     now?: DateInput;
 }
 

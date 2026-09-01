@@ -143,12 +143,11 @@ describe('useRelativeTime', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('throws a clear error for an invalid date instead of rendering NaN', () => {
-        const onError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    it('renders nothing for an invalid date instead of taking the tree down', () => {
+        render(<Stamp date="not a date" options={{ locale: 'en' }} />);
 
-        expect(() => render(<Stamp date="not a date" />)).toThrow(/^relative-time-lite:/);
-
-        onError.mockRestore();
+        expect(text()).toBe('');
+        expect(vi.getTimerCount()).toBe(0);
     });
 });
 

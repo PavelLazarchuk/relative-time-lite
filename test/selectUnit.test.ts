@@ -1,7 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { selectUnit } from '../src/selectUnit';
 import type { SelectUnitOptions } from '../src/types';
+
+const ORIGINAL_TZ = process.env.TZ;
+
+const pinUtc = () => {
+    beforeAll(() => {
+        process.env.TZ = 'UTC';
+    });
+
+    afterAll(() => {
+        process.env.TZ = ORIGINAL_TZ;
+    });
+};
 
 const at = (iso: string) => new Date(iso).getTime();
 const NOW = at('2024-03-15T12:00:00.000Z');
@@ -51,6 +63,8 @@ describe('selectUnit', () => {
     });
 
     describe('weeks', () => {
+        pinUtc();
+
         it('covers the gap up to a whole calendar month', () => {
             expect(from(7 * DAY)).toEqual({ value: 1, unit: 'week' });
             expect(from(20 * DAY)).toEqual({ value: 3, unit: 'week' });
@@ -71,6 +85,8 @@ describe('selectUnit', () => {
     });
 
     describe('calendar months', () => {
+        pinUtc();
+
         it('counts a month as a month whatever its length', () => {
             // 28, 30 and 31 days, all "1 month".
             expect(selectUnit(at('2023-02-01T00:00:00Z'), at('2023-03-01T00:00:00Z'))).toEqual({
@@ -158,6 +174,8 @@ describe('selectUnit', () => {
     });
 
     describe('years', () => {
+        pinUtc();
+
         it('treats a leap year and a common year alike', () => {
             expect(selectUnit(at('2024-02-29T00:00:00Z'), at('2025-02-28T00:00:00Z'))).toEqual({
                 value: 1,
@@ -280,6 +298,17 @@ describe('selectUnit options', () => {
         it('lets the ladder take over at the edge of the window', () => {
             expect(from(45 * SECOND, { justNowSeconds: 45 })).toEqual({
                 value: 45,
+                unit: 'second',
+            });
+        });
+
+        it('ignores a window that is not a positive number', () => {
+            expect(from(-20 * SECOND, { justNowSeconds: Number.NaN })).toEqual({
+                value: -20,
+                unit: 'second',
+            });
+            expect(from(-20 * SECOND, { justNowSeconds: -45 })).toEqual({
+                value: -20,
                 unit: 'second',
             });
         });

@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
     test: {
         include: ['test/**/*.test.{ts,tsx}'],
-        env: { TZ: 'UTC' },
+        env: { TZ: process.env.TZ || 'UTC' },
         typecheck: {
             enabled: true,
             include: ['test/**/*.test-d.ts'],

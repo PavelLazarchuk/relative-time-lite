@@ -1,7 +1,7 @@
 import { selectUnit } from './selectUnit';
 import type { DateInput, RelativeTimeOptions, RelativeTimeResult } from './types';
 
-export function toMs(input: DateInput): number {
+export function tryToMs(input: DateInput): number | undefined {
     const ms =
         typeof input === 'number'
             ? input
@@ -11,7 +11,13 @@ export function toMs(input: DateInput): number {
                 ? input.getTime()
                 : NaN;
 
-    if (!Number.isFinite(ms)) {
+    return Number.isFinite(ms) ? ms : undefined;
+}
+
+export function toMs(input: DateInput): number {
+    const ms = tryToMs(input);
+
+    if (ms === undefined) {
         throw new TypeError(`relative-time-lite: invalid date input: ${String(input)}`);
     }
 
@@ -57,8 +63,16 @@ export function formatAt(
     options: RelativeTimeOptions
 ): RelativeTimeResult {
     const parts = selectUnit(baseMs, targetMs, options);
+    const { justNowText, justNowSeconds = 0 } = options;
 
-    return { ...parts, text: getFormatter(options).format(parts.value, parts.unit) };
+    const text =
+        justNowText !== undefined &&
+        justNowSeconds > 0 &&
+        Math.abs(targetMs - baseMs) < justNowSeconds * 1000
+            ? justNowText
+            : getFormatter(options).format(parts.value, parts.unit);
+
+    return { ...parts, text };
 }
 
 /**

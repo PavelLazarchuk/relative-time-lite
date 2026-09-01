@@ -141,6 +141,24 @@ describe('createRelativeTimeStore', () => {
             expect(delayFor(-5 * DAY, { refreshMs: 5_000 })).toBe(5_000);
         });
 
+        it('holds a fixed refresh interval to the same floor as its own pacing', () => {
+            expect(delayFor(-5 * DAY, { refreshMs: 0 })).toBe(250);
+            expect(delayFor(-5 * DAY, { refreshMs: -1 })).toBe(250);
+            expect(delayFor(-5 * DAY, { refreshMs: Number.NaN })).toBe(250);
+        });
+
+        it('keeps a calendar unit off the floor when its average-length estimate overshoots', () => {
+            const delay = delayFor(-6210 * HOUR);
+
+            expect(delay).toBeGreaterThan(HOUR);
+            expect(delay).toBeLessThan(DAY);
+        });
+
+        it('ignores a "just now" window that is not a positive number', () => {
+            expect(delayFor(-10_000, { justNowSeconds: Number.NaN })).toBe(delayFor(-10_000));
+            expect(delayFor(-10_000, { justNowSeconds: -45 })).toBe(delayFor(-10_000));
+        });
+
         it('caps a very distant timestamp below the setTimeout overflow', () => {
             expect(delayFor(-40 * 365 * DAY)).toBeLessThanOrEqual(2_147_483_647);
         });
@@ -198,6 +216,8 @@ describe('createRelativeTimeStore', () => {
         it('attaches one document listener for all stores and detaches with the last', () => {
             const add = vi.spyOn(document, 'addEventListener');
             const remove = vi.spyOn(document, 'removeEventListener');
+            const addWindow = vi.spyOn(window, 'addEventListener');
+            const removeWindow = vi.spyOn(window, 'removeEventListener');
 
             const a = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
             const b = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
@@ -205,6 +225,8 @@ describe('createRelativeTimeStore', () => {
             const stopB = b.subscribe(() => {});
 
             expect(add.mock.calls.filter(([type]) => type === 'visibilitychange')).toHaveLength(1);
+            expect(addWindow.mock.calls.filter(([type]) => type === 'focus')).toHaveLength(1);
+            expect(addWindow.mock.calls.filter(([type]) => type === 'pageshow')).toHaveLength(1);
 
             stopA();
             expect(remove).not.toHaveBeenCalled();
@@ -214,9 +236,57 @@ describe('createRelativeTimeStore', () => {
                 1
             );
 
+            expect(removeWindow.mock.calls.filter(([type]) => type === 'focus')).toHaveLength(1);
+            expect(removeWindow.mock.calls.filter(([type]) => type === 'pageshow')).toHaveLength(1);
+
             add.mockRestore();
             remove.mockRestore();
+            addWindow.mockRestore();
+            removeWindow.mockRestore();
         });
+    });
+
+    it('catches up on a window focus, for a timer a sleeping machine never fired', () => {
+        const store = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
+        const listener = vi.fn();
+        const unsubscribe = store.subscribe(listener);
+
+        vi.setSystemTime(NOW.getTime() + 3 * HOUR);
+        expect(store.getSnapshot()).toBe('now');
+
+        window.dispatchEvent(new Event('focus'));
+
+        expect(store.getSnapshot()).toBe('3 hours ago');
+        expect(listener).toHaveBeenCalled();
+
+        unsubscribe();
+    });
+
+    it('catches up on a restore from the back/forward cache', () => {
+        const store = createRelativeTimeStore(NOW.getTime(), { locale: 'en' });
+        const unsubscribe = store.subscribe(() => {});
+
+        vi.setSystemTime(NOW.getTime() + 2 * DAY);
+        window.dispatchEvent(new Event('pageshow'));
+
+        expect(store.getSnapshot()).toBe('2 days ago');
+
+        unsubscribe();
+    });
+
+    it('leaves the window alone when visibility tracking is off', () => {
+        const add = vi.spyOn(window, 'addEventListener');
+
+        const store = createRelativeTimeStore(NOW.getTime(), {
+            locale: 'en',
+            trackVisibility: false,
+        });
+        const unsubscribe = store.subscribe(() => {});
+
+        expect(add.mock.calls.filter(([type]) => type === 'focus')).toHaveLength(0);
+
+        unsubscribe();
+        add.mockRestore();
     });
 
     it('never schedules anything for a pinned `now`', () => {

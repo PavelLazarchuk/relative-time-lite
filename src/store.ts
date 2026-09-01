@@ -27,7 +27,8 @@ const STEP: Record<RelativeTimeUnit, number> = {
     year: 31_556_952_000,
 };
 
-const clamp = (ms: number) => Math.min(Math.max(ms, MIN_DELAY), MAX_DELAY);
+const clamp = (ms: number) =>
+    Number.isFinite(ms) ? Math.min(Math.max(ms, MIN_DELAY), MAX_DELAY) : MIN_DELAY;
 
 /**
  * How long the current text is still going to be the right one.
@@ -58,14 +59,42 @@ function nextDelay(
     const edge = rounding === 'floor' ? (value > 0 ? value : value - 1) : value - 0.5;
     const delay = diff - edge * step;
 
-    return clamp(step < STEP.week ? delay : delay / 2);
+    if (step < STEP.week) return clamp(delay);
+
+    return clamp(delay > 0 ? delay / 2 : step / 64);
 }
 
 const watchers = new Set<() => void>();
 let listening = false;
 
-const onVisibilityChange = () => {
+const notifyWatchers = () => {
     for (const watcher of [...watchers]) watcher();
+};
+
+const RESYNC_EVENTS = ['focus', 'pageshow'] as const;
+
+const startListening = () => {
+    if (listening) return;
+
+    document.addEventListener('visibilitychange', notifyWatchers);
+
+    const view = document.defaultView;
+
+    if (view) for (const event of RESYNC_EVENTS) view.addEventListener(event, notifyWatchers);
+
+    listening = true;
+};
+
+const stopListening = () => {
+    if (!listening) return;
+
+    document.removeEventListener('visibilitychange', notifyWatchers);
+
+    const view = document.defaultView;
+
+    if (view) for (const event of RESYNC_EVENTS) view.removeEventListener(event, notifyWatchers);
+
+    listening = false;
 };
 
 /**
@@ -75,7 +104,7 @@ const onVisibilityChange = () => {
  * Each tick schedules the next one for the moment the text is due to change,
  * so a "5 seconds ago" wakes every second while a "3 days ago" sleeps for
  * twelve hours. Ticks are suspended while the tab is hidden and caught up on
- * return.
+ * return, on a window focus, and on a restore from the back/forward cache.
  *
  * Nothing is retained after the last unsubscribe: the timer is cleared and the
  * store is dropped by the caller. (A `WeakRef` around listeners was considered
@@ -106,7 +135,10 @@ export function createRelativeTimeStore(
 
         if (hidden()) return;
 
-        timer = setTimeout(tick, refreshMs ?? nextDelay(diff, parts, options));
+        timer = setTimeout(
+            tick,
+            refreshMs === undefined ? nextDelay(diff, parts, options) : clamp(refreshMs)
+        );
     };
 
     function tick() {
@@ -125,8 +157,8 @@ export function createRelativeTimeStore(
 
     const read = () => (current ??= formatAt(target, base ?? Date.now(), options));
 
-    const onVisibility = () => {
-        if (document.hidden) {
+    const resync = () => {
+        if (hidden()) {
             clearTimeout(timer);
             timer = undefined;
         } else if (listeners.size) {
@@ -140,12 +172,8 @@ export function createRelativeTimeStore(
 
             if (listeners.size === 1) {
                 if (live && trackVisibility && typeof document !== 'undefined') {
-                    watchers.add(onVisibility);
-
-                    if (!listening) {
-                        document.addEventListener('visibilitychange', onVisibilityChange);
-                        listening = true;
-                    }
+                    watchers.add(resync);
+                    startListening();
                 }
 
                 tick();
@@ -158,10 +186,7 @@ export function createRelativeTimeStore(
                 clearTimeout(timer);
                 timer = undefined;
 
-                if (watchers.delete(onVisibility) && listening && !watchers.size) {
-                    document.removeEventListener('visibilitychange', onVisibilityChange);
-                    listening = false;
-                }
+                if (watchers.delete(resync) && !watchers.size) stopListening();
             };
         },
 

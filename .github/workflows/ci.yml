@@ -41,3 +41,25 @@ jobs:
 
             - name: Tarball contents review
               run: npm run pack:verify
+
+    time-zones:
+        name: Tests (TZ ${{ matrix.tz }})
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                tz: [America/New_York, Europe/Warsaw, Australia/Lord_Howe]
+        env:
+            TZ: ${{ matrix.tz }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+
+            - run: npm ci
+
+            - name: Unit tests
+              run: npm test

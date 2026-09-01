@@ -38,13 +38,13 @@ function PostedAt({ at }: { at: string }) {
 
 ## Why
 
-|                             |                                                                                                                                                                                                       |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **No locale data**          | `Intl.RelativeTimeFormat` has been in every browser since 2020 and in Node since 12. Bundling 400 kB of translations to repeat what the platform already knows is the mistake this package avoids.    |
-| **Calendar-correct**        | Months are 28–31 days and years are 365 or 366. Month and year distances come from the calendar, not from a 30.44-day average, so "1 month ago" means the same day last month.                        |
-| **Paced, not polled**       | A live timestamp sleeps until the moment its own words are due to change — a "2 hours ago" wakes when it becomes three, not on a half-hourly grid. No `setInterval` running for the life of the page. |
-| **Quiet in the background** | Updates stop while the tab is hidden and catch up the moment it comes back.                                                                                                                           |
-| **React-free core**         | React is only reachable through `relative-time-lite/react`, enforced by a build check. The root entry imports nothing.                                                                                |
+|                             |                                                                                                                                                                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **No locale data**          | `Intl.RelativeTimeFormat` has been in every browser since 2020 and in Node since 12. Bundling 400 kB of translations to repeat what the platform already knows is the mistake this package avoids.                               |
+| **Calendar-correct**        | Months are 28–31 days and years are 365 or 366. Month and year distances come from the calendar, not from a 30.44-day average, so "1 month ago" means the same day last month.                                                   |
+| **Paced, not polled**       | A live timestamp sleeps until the moment its own words are due to change — a "2 hours ago" wakes when it becomes three, not on a half-hourly grid. No `setInterval` running for the life of the page.                            |
+| **Quiet in the background** | Updates stop while the tab is hidden and catch up the moment it comes back, on a window focus, or on a restore from the back/forward cache — so a timer a sleeping machine never fired cannot leave a stale timestamp on screen. |
+| **React-free core**         | React is only reachable through `relative-time-lite/react`, enforced by a build check. The root entry imports nothing.                                                                                                           |
 
 ## API
 
@@ -58,16 +58,17 @@ relativeTime(1704067200000);
 relativeTime('2024-01-01T00:00:00Z');
 ```
 
-`date` may be a `Date`, epoch milliseconds, or any string `Date.parse` accepts. Anything that would end up as `NaN` — an unparsable string, an invalid `Date`, `undefined` — throws a `TypeError` naming the package, rather than quietly formatting the words "NaN years ago".
+`date` may be a `Date`, epoch milliseconds, or any string `Date.parse` accepts — ISO 8601 is the only string format every runtime agrees on, so anything else is at the engine's discretion. Anything that would end up as `NaN` — an unparsable string, an invalid `Date`, `undefined` — throws a `TypeError` naming the package, rather than quietly formatting the words "NaN years ago". The React hooks are the exception: an unparsable date renders an empty string there, the same as a missing one.
 
 #### Options
 
-| Option    | Type                            | Default         | Description                                      |
-| --------- | ------------------------------- | --------------- | ------------------------------------------------ |
-| `locale`  | `string \| readonly string[]`   | runtime default | BCP 47 tag, or a fallback list.                  |
-| `style`   | `'long' \| 'short' \| 'narrow'` | `'long'`        | Passed through to `Intl.RelativeTimeFormat`.     |
-| `numeric` | `'always' \| 'auto'`            | `'auto'`        | `'auto'` prefers "yesterday" over "1 day ago".   |
-| `now`     | `Date \| number \| string`      | `Date.now()`    | Measure from a fixed point instead of the clock. |
+| Option        | Type                            | Default         | Description                                      |
+| ------------- | ------------------------------- | --------------- | ------------------------------------------------ |
+| `locale`      | `string \| readonly string[]`   | runtime default | BCP 47 tag, or a fallback list.                  |
+| `style`       | `'long' \| 'short' \| 'narrow'` | `'long'`        | Passed through to `Intl.RelativeTimeFormat`.     |
+| `numeric`     | `'always' \| 'auto'`            | `'auto'`        | `'auto'` prefers "yesterday" over "1 day ago".   |
+| `justNowText` | `string`                        | —               | Wording for the `justNowSeconds` window.         |
+| `now`         | `Date \| number \| string`      | `Date.now()`    | Measure from a fixed point instead of the clock. |
 
 Four more shape the unit itself, and are accepted everywhere a distance is measured — `relativeTime`, `relativeTimeParts`, `selectUnit`, the store and both hooks:
 
@@ -80,6 +81,7 @@ Four more shape the unit itself, and are accepted everywhere a distance is measu
 
 ```ts
 relativeTime(ts, { justNowSeconds: 45 }); // → 'now', for the first 45 seconds
+relativeTime(ts, { justNowSeconds: 45, justNowText: 'just now' }); // → 'just now'
 relativeTime(ts, { rounding: 'floor' }); // → '59 minutes ago', not '1 hour ago'
 relativeTime(ts, { minUnit: 'minute' }); // → 'this minute', never seconds
 relativeTime(ts, { maxUnit: 'day' }); // → '90 days ago', never months
@@ -128,7 +130,7 @@ Built on `useSyncExternalStore`, so the clock stays the source of truth, concurr
 
 Inline arguments are safe: `useRelativeTime(new Date(x), { locale: ['en'] })` does not rebuild the underlying timer on every render — the date and options are reduced to primitives first.
 
-A `null` or `undefined` date renders an empty string rather than throwing, so a timestamp that may not have arrived yet does not force a conditional hook:
+A `null`, `undefined` or unparsable date renders an empty string rather than throwing, so a timestamp that may not have arrived yet — or one a row of API data got wrong — does not force a conditional hook and cannot take the tree down:
 
 ```tsx
 useRelativeTime(order.shippedAt ?? null); // → '' until it ships
@@ -178,10 +180,10 @@ unsubscribe();
 
 Two options belong to the store alone:
 
-| Option            | Type      | Default | Description                                      |
-| ----------------- | --------- | ------- | ------------------------------------------------ |
-| `refreshMs`       | `number`  | —       | Tick on a fixed interval instead of self-pacing. |
-| `trackVisibility` | `boolean` | `true`  | Suspend ticks while the document is hidden.      |
+| Option            | Type      | Default | Description                                                             |
+| ----------------- | --------- | ------- | ----------------------------------------------------------------------- |
+| `refreshMs`       | `number`  | —       | Tick on a fixed interval instead of self-pacing, no faster than 250 ms. |
+| `trackVisibility` | `boolean` | `true`  | Suspend ticks while the document is hidden.                             |
 
 A pinned `now` freezes the distance, so such a store schedules nothing and watches nothing — it is a formatted string with a `subscribe` that never fires.
 
@@ -245,7 +247,7 @@ The package is side-effect free and every export is tree-shakeable, so importing
 
 **Time zones.** There is no `timeZone` option: month and year distances are measured on the calendar of whatever zone the runtime is in, since that is the calendar the reader is looking at. A server running in UTC and a browser in `Europe/Warsaw` therefore disagree about where a month boundary falls, and a distance within a few hours of one can render differently on each side — a second, quieter source of hydration mismatch on top of the moving clock above. Fix `TZ` on the server, or pass a fixed `now`, if you need the two to agree byte for byte.
 
-**Why no `WeakRef`.** Letting the garbage collector decide when a visible timestamp stops updating trades a deterministic leak for a nondeterministic bug. The store instead ties its lifetime to explicit subscription: the timer exists only while a listener does, and a single shared `visibilitychange` listener serves every store on the page, attached with the first subscription and removed with the last.
+**Why no `WeakRef`.** Letting the garbage collector decide when a visible timestamp stops updating trades a deterministic leak for a nondeterministic bug. The store instead ties its lifetime to explicit subscription: the timer exists only while a listener does, and a single shared set of `visibilitychange`, `focus` and `pageshow` listeners serves every store on the page, attached with the first subscription and removed with the last.
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react';
 
-import { toMs } from '../format';
+import { toMs, tryToMs } from '../format';
 import { createRelativeTimeStore } from '../store';
 import type { RelativeTimeStore } from '../store';
 import type { DateInput, RelativeTimeResult, RelativeTimeStoreOptions } from '../types';
@@ -28,11 +28,12 @@ function useRelativeTimeStore(
         maxUnit,
         rounding,
         justNowSeconds,
+        justNowText,
         refreshMs,
         trackVisibility,
     } = options;
 
-    const target = date === null || date === undefined ? undefined : toMs(date);
+    const target = date === null || date === undefined ? undefined : tryToMs(date);
     const base = now === undefined ? undefined : toMs(now);
 
     const localeIsList = typeof locale !== 'string';
@@ -52,6 +53,7 @@ function useRelativeTimeStore(
             maxUnit,
             rounding,
             justNowSeconds,
+            justNowText,
             refreshMs,
             trackVisibility,
         });
@@ -66,6 +68,7 @@ function useRelativeTimeStore(
         maxUnit,
         rounding,
         justNowSeconds,
+        justNowText,
         refreshMs,
         trackVisibility,
     ]);
@@ -81,7 +84,8 @@ function useRelativeTimeStore(
  * long as client and server agree on the locale.
  *
  * A `null` or `undefined` date renders an empty string, so a timestamp that
- * may not be there yet does not force a conditional hook.
+ * may not be there yet does not force a conditional hook, and neither does one
+ * the platform cannot parse.
  */
 export function useRelativeTime(
     date: DateInput | null | undefined,
@@ -98,7 +102,8 @@ export function useRelativeTime(
  * title, or a switch to an absolute date once the unit reaches years.
  *
  * The object is replaced only when the text changes, so it is safe to compare
- * by identity or to pass into a memo.
+ * by identity or to pass into a memo. `null` comes back for a missing or
+ * unparsable date.
  */
 export function useRelativeTimeParts(
     date: DateInput,

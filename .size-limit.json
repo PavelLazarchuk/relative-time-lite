@@ -2,13 +2,13 @@
     {
         "name": "relative-time-lite",
         "path": "dist/index.js",
-        "limit": "1.75 kB",
+        "limit": "1.8 kB",
         "gzip": true
     },
     {
         "name": "relative-time-lite (cjs)",
         "path": "dist/index.cjs",
-        "limit": "1.85 kB",
+        "limit": "1.95 kB",
         "gzip": true
     },
     {
@@ -29,7 +29,7 @@
         "name": "relative-time-lite/react",
         "path": "dist/react/index.js",
         "import": "{ useRelativeTime }",
-        "limit": "1.9 kB",
+        "limit": "2 kB",
         "gzip": true,
         "ignore": ["react"]
     }

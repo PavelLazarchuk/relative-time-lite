@@ -92,7 +92,9 @@ export function selectUnit(
     const diff = toMs - fromMs;
     const floor = rounding === 'floor';
 
-    if (Math.abs(diff) < justNowSeconds * SECOND) return { value: 0, unit: minUnit };
+    if (justNowSeconds > 0 && Math.abs(diff) < justNowSeconds * SECOND) {
+        return { value: 0, unit: minUnit };
+    }
 
     if (lo === 0) {
         const value = quantize(diff / SECOND, floor);

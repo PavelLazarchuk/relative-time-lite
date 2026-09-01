@@ -57,3 +57,33 @@ describe('daylight saving transitions (America/New_York)', () => {
         });
     });
 });
+
+describe('a half-hour offset with a half-hour shift (Australia/Lord_Howe)', () => {
+    beforeAll(() => {
+        process.env.TZ = 'Australia/Lord_Howe';
+    });
+
+    afterAll(() => {
+        process.env.TZ = ORIGINAL_TZ;
+    });
+
+    it('measures calendar months on local dates, not UTC ones', () => {
+        expect(selectUnit(at('2024-03-01T00:00:00Z'), at('2024-04-01T00:00:00Z'))).toEqual({
+            value: 1,
+            unit: 'month',
+        });
+    });
+
+    it('keeps a year a year across the 30-minute transitions', () => {
+        expect(selectUnit(at('2023-06-15T02:00:00Z'), at('2024-06-15T02:00:00Z'))).toEqual({
+            value: 1,
+            unit: 'year',
+        });
+    });
+
+    it('reads the days either side of a shift as elapsed time', () => {
+        const before = at('2024-04-06T13:00:00Z');
+
+        expect(selectUnit(before, before + 24 * HOUR)).toEqual({ value: 1, unit: 'day' });
+    });
+});
