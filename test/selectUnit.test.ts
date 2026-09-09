@@ -332,3 +332,63 @@ describe('selectUnit options', () => {
         ).toEqual({ value: 7, unit: 'week' });
     });
 });
+
+describe('quarters', () => {
+    pinUtc();
+
+    it('are never reached by the unclamped ladder', () => {
+        for (const days of [1, 10, 45, 100, 200, 400, 1000, 5000]) {
+            expect(from(days * DAY).unit).not.toBe('quarter');
+            expect(from(-days * DAY).unit).not.toBe('quarter');
+        }
+    });
+
+    it('cap the ladder in place of years', () => {
+        expect(from(400 * DAY, { maxUnit: 'quarter' })).toEqual({ value: 4, unit: 'quarter' });
+        expect(from(-400 * DAY, { maxUnit: 'quarter' })).toEqual({ value: -4, unit: 'quarter' });
+        expect(from(1200 * DAY, { maxUnit: 'quarter' })).toEqual({ value: 13, unit: 'quarter' });
+    });
+
+    it('leave the finer units below the cap alone', () => {
+        expect(from(45 * DAY, { maxUnit: 'quarter' })).toEqual({ value: 1, unit: 'month' });
+        expect(from(3 * HOUR, { maxUnit: 'quarter' })).toEqual({ value: 3, unit: 'hour' });
+    });
+
+    it('collapse everything smaller when they are the floor', () => {
+        expect(from(3 * DAY, { minUnit: 'quarter' })).toEqual({ value: 0, unit: 'quarter' });
+        expect(from(100 * DAY, { minUnit: 'quarter' })).toEqual({ value: 1, unit: 'quarter' });
+    });
+
+    it('hand over to years at four of them, as months do at twelve', () => {
+        expect(from(400 * DAY, { minUnit: 'quarter' })).toEqual({ value: 1, unit: 'year' });
+        expect(from(300 * DAY, { minUnit: 'quarter' })).toEqual({ value: 3, unit: 'quarter' });
+    });
+
+    it('are the only unit left when they are both ends of the range', () => {
+        expect(from(3 * DAY, { minUnit: 'quarter', maxUnit: 'quarter' })).toEqual({
+            value: 0,
+            unit: 'quarter',
+        });
+        expect(from(1200 * DAY, { minUnit: 'quarter', maxUnit: 'quarter' })).toEqual({
+            value: 13,
+            unit: 'quarter',
+        });
+    });
+
+    it('sit between months and years in the range check', () => {
+        expect(() => from(0, { minUnit: 'quarter', maxUnit: 'month' })).toThrow(RangeError);
+        expect(() => from(0, { minUnit: 'year', maxUnit: 'quarter' })).toThrow(RangeError);
+        expect(() => from(0, { minUnit: 'month', maxUnit: 'quarter' })).not.toThrow();
+    });
+
+    it('truncate towards zero under a floor rounding', () => {
+        expect(from(400 * DAY, { maxUnit: 'quarter', rounding: 'floor' })).toEqual({
+            value: 4,
+            unit: 'quarter',
+        });
+        expect(from(-400 * DAY, { maxUnit: 'quarter', rounding: 'floor' })).toEqual({
+            value: -4,
+            unit: 'quarter',
+        });
+    });
+});

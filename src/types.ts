@@ -1,6 +1,7 @@
 export type DateInput = Date | number | string;
 
-export type RelativeTimeUnit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
+export type RelativeTimeUnit =
+    'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year';
 
 export interface RelativeTimeParts {
     value: number;
@@ -23,6 +24,7 @@ export interface SelectUnitOptions {
     maxUnit?: RelativeTimeUnit;
     rounding?: 'round' | 'floor';
     justNowSeconds?: number;
+    timeZone?: string;
 }
 
 export interface RelativeTimeOptions extends SelectUnitOptions {

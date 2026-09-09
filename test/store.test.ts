@@ -154,6 +154,13 @@ describe('createRelativeTimeStore', () => {
             expect(delay).toBeLessThan(DAY);
         });
 
+        it('paces a quarter like the other units of no fixed length', () => {
+            const delay = delayFor(-400 * DAY, { maxUnit: 'quarter' });
+
+            expect(delay).toBeGreaterThan(DAY);
+            expect(delay).toBeLessThan(30 * DAY);
+        });
+
         it('ignores a "just now" window that is not a positive number', () => {
             expect(delayFor(-10_000, { justNowSeconds: Number.NaN })).toBe(delayFor(-10_000));
             expect(delayFor(-10_000, { justNowSeconds: -45 })).toBe(delayFor(-10_000));

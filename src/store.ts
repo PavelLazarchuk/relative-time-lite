@@ -28,6 +28,7 @@ const STEP: Record<RelativeTimeUnit, number> = {
     day: 86_400_000,
     week: 604_800_000,
     month: 2_629_746_000,
+    quarter: 7_889_238_000,
     year: 31_556_952_000,
 };
 
@@ -44,10 +45,11 @@ const clamp = (ms: number) =>
  * half-hourly grid — and it doubles as the ladder's own boundary, since the
  * switch to a coarser unit happens at exactly the same crossing.
  *
- * Weeks, months and years have no fixed length, so the same arithmetic on an
- * average-length unit is an estimate rather than an edge. Sleeping half of it
- * converges on the crossing from below instead of risking a late wake-up: a
- * handful of no-op checks per transition, none of which notifies anyone.
+ * Weeks, months, quarters and years have no fixed length, so the same
+ * arithmetic on an average-length unit is an estimate rather than an edge.
+ * Sleeping half of it converges on the crossing from below instead of risking
+ * a late wake-up: a handful of no-op checks per transition, none of which
+ * notifies anyone.
  */
 function nextDelay(
     diff: number,

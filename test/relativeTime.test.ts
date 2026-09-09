@@ -311,3 +311,19 @@ describe('custom wording', () => {
         }
     });
 });
+
+describe('quarters', () => {
+    it('are worded by the platform like any other unit', () => {
+        const options = { locale: 'en', now: NOW, maxUnit: 'quarter' } as const;
+
+        expect(relativeTime(ago(400 * DAY), options)).toBe('4 quarters ago');
+        expect(relativeTime(ago(-400 * DAY), options)).toBe('in 4 quarters');
+        expect(relativeTime(ago(100 * DAY), { ...options, minUnit: 'quarter' })).toBe(
+            'last quarter'
+        );
+    });
+
+    it('stay out of the way unless the ladder is clamped to them', () => {
+        expect(relativeTime(ago(400 * DAY), { locale: 'en', now: NOW })).toBe('last year');
+    });
+});

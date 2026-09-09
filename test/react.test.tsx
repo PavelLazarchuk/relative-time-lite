@@ -300,6 +300,19 @@ describe('one store per component', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('carries a time zone through to the calendar units, and follows a change of it', () => {
+        const date = '2024-01-30T23:30:00Z';
+        const now = '2024-02-28T23:45:00Z';
+
+        const { rerender } = render(<Stamp date={date} options={{ locale: 'en', now }} />);
+
+        expect(text()).toBe('4 weeks ago');
+
+        rerender(<Stamp date={date} options={{ locale: 'en', now, timeZone: 'Europe/Warsaw' }} />);
+
+        expect(text()).toBe('last month');
+    });
+
     it('takes wording from a `format` function and keeps it live', () => {
         const format = ({ value, unit }: { value: number; unit: string }) =>
             `${-value} ${unit} back`;

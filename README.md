@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/relative-time-lite.svg)](https://www.npmjs.com/package/relative-time-lite)
 [![npm downloads](https://img.shields.io/npm/dm/relative-time-lite.svg)](https://www.npmjs.com/package/relative-time-lite)
 
-Relative time formatting — "3 minutes ago", "in 2 months" — in **1.19 kB gzipped**, with a live-updating React hook in the box.
+Relative time formatting — "3 minutes ago", "in 2 months" — in **1.39 kB gzipped**, with a live-updating React hook in the box.
 
 ```sh
 npm install relative-time-lite
@@ -72,7 +72,7 @@ relativeTime('2024-01-01T00:00:00Z');
 | `format`      | `(input) => string \| undefined` | —               | Your own wording, consulted first.               |
 | `now`         | `Date \| number \| string`       | `Date.now()`    | Measure from a fixed point instead of the clock. |
 
-Four more shape the unit itself, and are accepted everywhere a distance is measured — `relativeTime`, `relativeTimeParts`, `selectUnit`, the store and both hooks:
+Five more shape the unit itself, and are accepted everywhere a distance is measured — `relativeTime`, `relativeTimeParts`, `selectUnit`, the store and both hooks:
 
 | Option           | Type                 | Default    | Description                                                |
 | ---------------- | -------------------- | ---------- | ---------------------------------------------------------- |
@@ -80,6 +80,7 @@ Four more shape the unit itself, and are accepted everywhere a distance is measu
 | `maxUnit`        | `RelativeTimeUnit`   | `'year'`   | Coarsest unit to use. Anything larger is said in this one. |
 | `rounding`       | `'round' \| 'floor'` | `'round'`  | `'floor'` truncates towards zero.                          |
 | `justNowSeconds` | `number`             | `0`        | Distances shorter than this collapse to "now".             |
+| `timeZone`       | `string`             | runtime    | IANA zone the calendar units are measured on.              |
 
 ```ts
 relativeTime(ts, { justNowSeconds: 45 }); // → 'now', for the first 45 seconds
@@ -87,6 +88,8 @@ relativeTime(ts, { justNowSeconds: 45, justNowText: 'just now' }); // → 'just 
 relativeTime(ts, { rounding: 'floor' }); // → '59 minutes ago', not '1 hour ago'
 relativeTime(ts, { minUnit: 'minute' }); // → 'this minute', never seconds
 relativeTime(ts, { maxUnit: 'day' }); // → '90 days ago', never months
+relativeTime(ts, { maxUnit: 'quarter' }); // → '4 quarters ago', never years
+relativeTime(ts, { timeZone: 'Europe/Warsaw' }); // → 'last month' on Warsaw's calendar
 ```
 
 #### Wording of your own
@@ -106,6 +109,10 @@ That covers the cases the ladder has no vocabulary for — a "just now" without 
 Live stores and hooks pace themselves on the text your function returns, so a stable string means fewer wake-ups, not more.
 
 `maxUnit` is also the way to hand off to an absolute date: cap the ladder, read the `unit` back from `relativeTimeParts`, and render a real date once it reaches the cap.
+
+`quarter` sits between `month` and `year`, and is the one unit the ladder never picks on its own — "in 2 quarters" is not how most UIs read a date, so it is reachable only by naming it in `minUnit` or `maxUnit`.
+
+`timeZone` is any IANA name, and it decides the calendar that months, quarters and years are measured against. Without one they are measured in whatever zone the runtime is in — which is the right answer in a browser and the wrong one on a server that renders for readers elsewhere. See [Calendars and clocks](#calendars-and-clocks).
 
 `numeric` defaults to `'auto'` rather than `Intl`'s own `'always'`, because "yesterday" is what almost every UI wants. Pass `'always'` to get the plain number back.
 
@@ -245,17 +252,31 @@ Each threshold is checked on the **rounded** value, so the switch happens at the
 
 Weeks fill the stretch between a week and a month, which caps them at 4 — you will never see "5 weeks ago" turn up next to "last month".
 
+There is no row for `quarter`: it is only ever reached by naming it in `minUnit` or `maxUnit`, and the unclamped ladder steps from months straight to years.
+
 `minUnit` and `maxUnit` clamp this ladder from either end: the distance is then expressed in the nearest allowed unit, however large or small the number gets. `rounding: 'floor'` moves every threshold from the halfway point to the whole one, and `justNowSeconds` puts a flat "now" in front of the whole thing.
 
 ### Calendars and clocks
 
 Seconds through days are measured in elapsed time. A day is 24 real hours, so noon-to-noon across a spring-forward reads "23 hours ago" — which is what actually elapsed.
 
-Months and years are measured on the calendar, in the local time zone:
+Months, quarters and years are measured on the calendar:
 
 - Feb 1 → Mar 1 is one month, whether February had 28 days or 29.
 - Jan 31 + one month is Feb 28 (or 29), the standard clamp, so that pair reads "last month".
 - A year is a year across two DST transitions and any number of leap days.
+
+Which calendar is the question `timeZone` answers. Left out, it is the runtime's own zone — the reader's, in a browser, which is what you want. Passed, it is that zone's calendar, offset and DST rules at each instant:
+
+```ts
+const from = '2024-01-30T23:30:00Z'; // 00:30 on Jan 31 in Warsaw
+const to = '2024-02-28T23:45:00Z'; // 00:45 on Feb 29 in Warsaw
+
+relativeTime(from, { locale: 'en', now: to }); // → '4 weeks ago' on a UTC server
+relativeTime(from, { locale: 'en', now: to, timeZone: 'Europe/Warsaw' }); // → 'last month'
+```
+
+That is the fix for a server and a browser disagreeing about where a month boundary falls: name the zone you are rendering for and both sides measure against the same calendar. Seconds through days are elapsed time and never move, so `timeZone` has nothing to change about them.
 
 ## Bundle size
 
@@ -263,10 +284,10 @@ Measured gzipped, with `size-limit`:
 
 | Import                                      | Size    |
 | ------------------------------------------- | ------- |
-| `import { selectUnit }`                     | 701 B   |
-| `import { relativeTime }`                   | 1.19 kB |
-| the whole root entry                        | 2.16 kB |
-| `relative-time-lite/react` (React excluded) | 2.45 kB |
+| `import { selectUnit }`                     | 909 B   |
+| `import { relativeTime }`                   | 1.39 kB |
+| the whole root entry                        | 2.38 kB |
+| `relative-time-lite/react` (React excluded) | 2.67 kB |
 
 The package is side-effect free and every export is tree-shakeable, so importing only `relativeTime` leaves the auto-update engine out of your bundle entirely.
 
@@ -274,13 +295,13 @@ The package is side-effect free and every export is tree-shakeable, so importing
 
 **Server rendering.** `relativeTime` and the hook's server snapshot are the same computation, but the clock moves between the render and the hydration — a timestamp that says "3 hours ago" on the server may want to say "4 hours ago" by the time the browser gets there, and React will report a hydration mismatch. Pass a fixed `now` for the server pass, or render the absolute time and let the hook take over on the client.
 
-**Time zones.** There is no `timeZone` option: month and year distances are measured on the calendar of whatever zone the runtime is in, since that is the calendar the reader is looking at. A server running in UTC and a browser in `Europe/Warsaw` therefore disagree about where a month boundary falls, and a distance within a few hours of one can render differently on each side — a second, quieter source of hydration mismatch on top of the moving clock above. Fix `TZ` on the server, or pass a fixed `now`, if you need the two to agree byte for byte.
+**Time zones.** Without a `timeZone`, calendar units are measured in whatever zone the runtime is in, so a server running in UTC and a browser in `Europe/Warsaw` can disagree about where a month boundary falls — a second, quieter source of hydration mismatch on top of the moving clock above. Pass the same `timeZone` on both sides and it goes away.
 
 **Why no `WeakRef`.** Letting the garbage collector decide when a visible timestamp stops updating trades a deterministic leak for a nondeterministic bug. The store instead ties its lifetime to explicit subscription: the timer exists only while a listener does, and a single shared set of `visibilitychange`, `focus` and `pageshow` listeners serves every store on the page, attached with the first subscription and removed with the last.
 
 ## Requirements
 
-Any runtime with `Intl.RelativeTimeFormat`: Node 12+, and every browser since early 2020. A runtime without it throws a `TypeError` naming the package on the first call that needs wording — load a polyfill, or pass a `format` function and the platform formatter is never reached. Node builds without full ICU (`--with-intl=small-icu`) only carry English — use `full-icu` if you need more.
+Any runtime with `Intl.RelativeTimeFormat`: Node 12+, and every browser since early 2020. The `timeZone` option additionally wants `timeZoneName: 'longOffset'` on `Intl.DateTimeFormat`, which means Node 18+, Chrome 95+, Safari 15.4+ and Firefox 91+; nothing else in the package touches it. A runtime without it throws a `TypeError` naming the package on the first call that needs wording — load a polyfill, or pass a `format` function and the platform formatter is never reached. Node builds without full ICU (`--with-intl=small-icu`) only carry English — use `full-icu` if you need more.
 
 ## License
 

@@ -34,6 +34,7 @@ describe('public types', () => {
     it('returns a unit Intl.RelativeTimeFormat accepts', () => {
         expectTypeOf(selectUnit(0, 1)).toEqualTypeOf<{ value: number; unit: RelativeTimeUnit }>();
         expectTypeOf<RelativeTimeUnit>().toExtend<Intl.RelativeTimeFormatUnit>();
+        expectTypeOf<'quarter'>().toExtend<RelativeTimeUnit>();
     });
 
     it('exposes a store shaped for useSyncExternalStore', () => {
@@ -51,12 +52,15 @@ describe('public types', () => {
             'round' | 'floor' | undefined
         >();
         expectTypeOf<SelectUnitOptions['justNowSeconds']>().toEqualTypeOf<number | undefined>();
+        expectTypeOf<SelectUnitOptions['timeZone']>().toEqualTypeOf<string | undefined>();
         expectTypeOf<RelativeTimeOptions>().toExtend<SelectUnitOptions>();
     });
 
     it('takes the same ladder options everywhere', () => {
         expectTypeOf(selectUnit).toBeCallableWith(0, 1, { maxUnit: 'day' });
+        expectTypeOf(selectUnit).toBeCallableWith(0, 1, { timeZone: 'Europe/Warsaw' });
         expectTypeOf(relativeTime).toBeCallableWith(0, { minUnit: 'minute' });
+        expectTypeOf(relativeTime).toBeCallableWith(0, { maxUnit: 'quarter' });
         expectTypeOf(relativeTimeParts(0)).toEqualTypeOf<RelativeTimeResult>();
         expectTypeOf(relativeTimeParts(0).text).toBeString();
         expectTypeOf(relativeTimeParts(0).unit).toEqualTypeOf<RelativeTimeUnit>();
