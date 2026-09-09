@@ -304,7 +304,9 @@ describe('one store per component', () => {
         const date = '2024-01-30T23:30:00Z';
         const now = '2024-02-28T23:45:00Z';
 
-        const { rerender } = render(<Stamp date={date} options={{ locale: 'en', now }} />);
+        const { rerender } = render(
+            <Stamp date={date} options={{ locale: 'en', now, timeZone: 'UTC' }} />
+        );
 
         expect(text()).toBe('4 weeks ago');
 

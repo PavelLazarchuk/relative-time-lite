@@ -1,14 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { relativeTime } from '../src/format';
 import { selectUnit } from '../src/selectUnit';
 
 const at = (iso: string) => new Date(iso).getTime();
 
+const MINUTE = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 
+const ORIGINAL_TZ = process.env.TZ;
+
 describe('timeZone', () => {
+    beforeAll(() => {
+        process.env.TZ = 'UTC';
+    });
+
+    afterAll(() => {
+        process.env.TZ = ORIGINAL_TZ;
+    });
+
     it('measures calendar months on the given zone, not the runtime one', () => {
         // 00:30 local Jan 31 to 00:45 local Feb 29 in Warsaw is one whole
         // calendar month; the same pair of instants read in UTC lands on Jan 30
@@ -129,5 +140,33 @@ describe('timeZone', () => {
                 timeZone: 'Middle/Earth',
             })
         ).toThrow(RangeError);
+    });
+});
+
+describe('the runtime zone', () => {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    const ANCHORS = [
+        '2024-02-29T00:00:00Z', // a month boundary, on a leap year
+        '2024-03-10T00:00:00Z', // New York springs forward
+        '2024-04-07T00:00:00Z', // Lord Howe gives back its half hour
+        '2024-11-03T00:00:00Z', // New York falls back
+    ];
+
+    it('is what the default path measures, exactly as naming it would', () => {
+        for (const anchor of ANCHORS) {
+            for (let minutes = -1500; minutes <= 1500; minutes += 30) {
+                const to = at(anchor) + minutes * MINUTE;
+
+                for (const span of [29 * DAY, 365 * DAY]) {
+                    expect(selectUnit(to - span, to, { timeZone })).toEqual(
+                        selectUnit(to - span, to)
+                    );
+                    expect(selectUnit(to, to - span, { timeZone })).toEqual(
+                        selectUnit(to, to - span)
+                    );
+                }
+            }
+        }
     });
 });
