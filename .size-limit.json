@@ -29,7 +29,7 @@
         "name": "relative-time-lite/react",
         "path": "dist/react/index.js",
         "import": "{ useRelativeTime }",
-        "limit": "2.8 kB",
+        "limit": "2.9 kB",
         "gzip": true,
         "ignore": ["react"]
     }

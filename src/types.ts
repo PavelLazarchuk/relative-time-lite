@@ -40,3 +40,8 @@ export interface RelativeTimeStoreOptions extends RelativeTimeOptions {
     refreshMs?: number;
     trackVisibility?: boolean;
 }
+
+export interface UseRelativeTimeOptions extends RelativeTimeStoreOptions {
+    hydrationText?: string;
+    serverNow?: DateInput;
+}

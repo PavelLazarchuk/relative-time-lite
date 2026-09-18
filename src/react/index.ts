@@ -1,9 +1,24 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import {
+    createContext,
+    createElement,
+    useContext,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useSyncExternalStore,
+} from 'react';
+import type { ReactNode } from 'react';
 
-import { toMs, tryToMs } from '../format';
+import { formatAt, toMs, tryToMs } from '../format';
 import { createRelativeTimeStore } from '../store';
 import type { RelativeTimeStore } from '../store';
-import type { DateInput, RelativeTimeResult, RelativeTimeStoreOptions } from '../types';
+import type {
+    DateInput,
+    RelativeTimeResult,
+    RelativeTimeStoreOptions,
+    UseRelativeTimeOptions,
+} from '../types';
 
 const noop = () => {};
 
@@ -19,10 +34,58 @@ const EMPTY_STORE: RelativeTimeStore = {
 
 const useApplyEffect = typeof document === 'undefined' ? useEffect : useLayoutEffect;
 
+interface HydrationDefaults {
+    now?: number;
+    hydrationText?: string;
+}
+
+const HydrationContext = createContext<HydrationDefaults>({});
+
+export interface RelativeTimeProviderProps {
+    now?: DateInput;
+    hydrationText?: string;
+    children?: ReactNode;
+}
+
+export function RelativeTimeProvider({ now, hydrationText, children }: RelativeTimeProviderProps) {
+    const base = now === undefined ? undefined : toMs(now);
+
+    const value = useMemo<HydrationDefaults>(
+        () => ({ now: base, hydrationText }),
+        [base, hydrationText]
+    );
+
+    return createElement(HydrationContext.Provider, { value }, children);
+}
+
+function useServerParts(
+    target: number | undefined,
+    storeOptions: RelativeTimeStoreOptions,
+    options: UseRelativeTimeOptions
+): RelativeTimeResult | undefined {
+    const defaults = useContext(HydrationContext);
+
+    const own = options.hydrationText !== undefined || options.serverNow !== undefined;
+
+    const text = own ? options.hydrationText : defaults.hydrationText;
+    const base = own ? options.serverNow : defaults.now;
+    const serverNow = base === undefined ? undefined : toMs(base);
+
+    return useMemo(() => {
+        if (target === undefined) return undefined;
+
+        if (text !== undefined) return { value: 0, unit: 'second', text };
+
+        if (serverNow === undefined) return undefined;
+
+        return formatAt(target, serverNow, storeOptions);
+    }, [target, text, serverNow, storeOptions]);
+}
+
 function useRelativeTimeStore(
     date: DateInput | null | undefined,
-    options: RelativeTimeStoreOptions
-): RelativeTimeStore {
+    options: UseRelativeTimeOptions
+): [RelativeTimeStore, RelativeTimeResult | undefined] {
     const {
         locale,
         style,
@@ -89,6 +152,7 @@ function useRelativeTimeStore(
     }
 
     const store = target === undefined ? EMPTY_STORE : (ref.current as RelativeTimeStore);
+    const serverParts = useServerParts(target, storeOptions, options);
 
     useApplyEffect(() => {
         if (target === undefined || ref.current === null) return;
@@ -101,7 +165,7 @@ function useRelativeTimeStore(
         }
     }, [target, storeOptions]);
 
-    return store;
+    return [store, serverParts];
 }
 
 /**
@@ -119,11 +183,16 @@ function useRelativeTimeStore(
  */
 export function useRelativeTime(
     date: DateInput | null | undefined,
-    options: RelativeTimeStoreOptions = {}
+    options: UseRelativeTimeOptions = {}
 ): string {
-    const store = useRelativeTimeStore(date, options);
+    const [store, serverParts] = useRelativeTimeStore(date, options);
 
-    return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+    const getServerSnapshot = useMemo(
+        () => (serverParts === undefined ? store.getSnapshot : () => serverParts.text),
+        [store, serverParts]
+    );
+
+    return useSyncExternalStore(store.subscribe, store.getSnapshot, getServerSnapshot);
 }
 
 /**
@@ -137,18 +206,24 @@ export function useRelativeTime(
  */
 export function useRelativeTimeParts(
     date: DateInput,
-    options?: RelativeTimeStoreOptions
+    options?: UseRelativeTimeOptions
 ): RelativeTimeResult;
 export function useRelativeTimeParts(
     date: DateInput | null | undefined,
-    options?: RelativeTimeStoreOptions
+    options?: UseRelativeTimeOptions
 ): RelativeTimeResult | null;
 export function useRelativeTimeParts(
     date: DateInput | null | undefined,
-    options: RelativeTimeStoreOptions = {}
+    options: UseRelativeTimeOptions = {}
 ): RelativeTimeResult | null {
-    const store = useRelativeTimeStore(date, options);
-    const parts = useSyncExternalStore(store.subscribe, store.getParts, store.getParts);
+    const [store, serverParts] = useRelativeTimeStore(date, options);
+
+    const getServerParts = useMemo(
+        () => (serverParts === undefined ? store.getParts : () => serverParts),
+        [store, serverParts]
+    );
+
+    const parts = useSyncExternalStore(store.subscribe, store.getParts, getServerParts);
 
     return store === EMPTY_STORE ? null : parts;
 }
@@ -162,4 +237,5 @@ export type {
     RelativeTimeStoreOptions,
     RelativeTimeUnit,
     SelectUnitOptions,
+    UseRelativeTimeOptions,
 } from '../types';

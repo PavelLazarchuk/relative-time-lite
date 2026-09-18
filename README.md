@@ -149,7 +149,7 @@ function Comment({ postedAt }: { postedAt: number }) {
 }
 ```
 
-Same arguments as `relativeTime`, plus the store's own `refreshMs` and `trackVisibility`. The string keeps itself current and the component re-renders **only when the words actually change** — a comment from last Tuesday re-renders zero times over the next six hours, even though the hook wakes up to check.
+Same arguments as `relativeTime`, plus the store's own `refreshMs` and `trackVisibility`, plus `hydrationText` and `serverNow` for server rendering. The string keeps itself current and the component re-renders **only when the words actually change** — a comment from last Tuesday re-renders zero times over the next six hours, even though the hook wakes up to check.
 
 Built on `useSyncExternalStore`, so the clock stays the source of truth, concurrent rendering sees a consistent value within a pass, and there is no `useState`/`useEffect` handshake to tear. The timer is torn down on unmount.
 
@@ -162,6 +162,45 @@ useRelativeTime(order.shippedAt ?? null); // → '' until it ships
 ```
 
 `react` is an optional peer dependency (`>=18`). The entry point is marked `'use client'` for the Next.js App Router; the value it renders depends on the clock, so it cannot be a server component.
+
+### Hydration: `hydrationText`, `serverNow`, `<RelativeTimeProvider>`
+
+Both hooks take two more options, and they exist for one reason: the clock moves between the server render and the hydration render, so a timestamp that said "3 hours ago" in the HTML may want to say "4 hours ago" by the time React reaches it — and React reports that as a hydration mismatch.
+
+| Option          | Type                       | Default | Description                                                     |
+| --------------- | -------------------------- | ------- | --------------------------------------------------------------- |
+| `hydrationText` | `string`                   | —       | Rendered by the server pass and the hydration pass, live after. |
+| `serverNow`     | `Date \| number \| string` | —       | The moment those two passes measure from.                       |
+
+`hydrationText` puts a placeholder in the markup — an empty string, a dash, or the absolute date — and lets the browser fill in the live text on the frame after hydration:
+
+```tsx
+useRelativeTime(postedAt, { locale: 'en', hydrationText: '' });
+```
+
+`serverNow` keeps real words in the HTML instead, for a crawler or a reader with JavaScript off: name the moment the request was rendered and both passes measure from it, then the browser goes live.
+
+```tsx
+useRelativeTime(postedAt, { locale: 'en', serverNow: requestTime });
+```
+
+Neither freezes anything. `now` is the option that pins the clock for good; these two pin only the two renders that have to agree.
+
+For a whole subtree — and to keep the request time out of every call site — `<RelativeTimeProvider>` supplies the defaults:
+
+```tsx
+import { RelativeTimeProvider } from 'relative-time-lite/react';
+
+export default function Page() {
+    return (
+        <RelativeTimeProvider now={Date.now()}>
+            <Feed />
+        </RelativeTimeProvider>
+    );
+}
+```
+
+Its `now` prop is the server's render moment — the `serverNow` above, not a frozen clock — and it also takes `hydrationText`. A hook that names either option ignores the provider entirely rather than merging with it, so a call can swap a subtree's placeholder for real text. Name both in one call and `hydrationText` is the one that renders.
 
 ### `useRelativeTimeParts(date, options?): { value, unit, text } | null`
 
@@ -287,13 +326,13 @@ Measured gzipped, with `size-limit`:
 | `import { selectUnit }`                     | 909 B   |
 | `import { relativeTime }`                   | 1.39 kB |
 | the whole root entry                        | 2.38 kB |
-| `relative-time-lite/react` (React excluded) | 2.67 kB |
+| `relative-time-lite/react` (React excluded) | 2.79 kB |
 
 The package is side-effect free and every export is tree-shakeable, so importing only `relativeTime` leaves the auto-update engine out of your bundle entirely.
 
 ## Notes
 
-**Server rendering.** `relativeTime` and the hook's server snapshot are the same computation, but the clock moves between the render and the hydration — a timestamp that says "3 hours ago" on the server may want to say "4 hours ago" by the time the browser gets there, and React will report a hydration mismatch. Pass a fixed `now` for the server pass, or render the absolute time and let the hook take over on the client.
+**Server rendering.** `relativeTime` and the hook's server snapshot are the same computation, but the clock moves between the render and the hydration. The hooks answer that with [`hydrationText` and `serverNow`](#hydration-hydrationtext-servernow-relativetimeprovider); outside React, pass the same `now` to both sides.
 
 **Time zones.** Without a `timeZone`, calendar units are measured in whatever zone the runtime is in, so a server running in UTC and a browser in `Europe/Warsaw` can disagree about where a month boundary falls — a second, quieter source of hydration mismatch on top of the moving clock above. Pass the same `timeZone` on both sides and it goes away.
 
